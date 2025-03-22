@@ -50,3 +50,18 @@ Thumbs.db
 
 # Log files
 *.log
+
+# Large binary files
+tools/ffmpeg/
+tools/ffmpeg.zip
+tools/ffmpeg-7.1-full_build/
+
+# Audio and transcription files
+*.mp3
+*.wav
+*.flac
+*.ogg
+*.m4a
+*.mp4
+transcriptions/
+temp/
