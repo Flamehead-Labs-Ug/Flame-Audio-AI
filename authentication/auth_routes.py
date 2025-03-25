@@ -4,14 +4,20 @@ from pydantic import BaseModel
 from supabase import create_client, Client
 import os
 from dotenv import load_dotenv
+from pydantic import BaseModel
 
 # Load environment variables
 load_dotenv()
 
+# Get Supabase credentials from environment variables
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
+
+# Check if authentication is enabled
+AUTH_ENABLED = os.getenv("AUTH_ENABLED", "true").lower() == "true"
+
 # Initialize Supabase client
-supabase_url = os.getenv("SUPABASE_URL")
-supabase_key = os.getenv("SUPABASE_ANON_KEY")
-supabase: Client = create_client(supabase_url, supabase_key)
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 # Create router
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -27,6 +33,12 @@ class LoginRequest(BaseModel):
 class SignupRequest(BaseModel):
     email: str
     password: str
+
+class UserRead(BaseModel):
+    id: str
+    email: str
+    app_metadata: dict
+    user_metadata: dict
 
 @router.post("/login")
 async def login(request: LoginRequest):
@@ -122,6 +134,13 @@ async def logout(credentials: HTTPAuthorizationCredentials = Depends(security)):
 
 @router.get("/verify")
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    # If authentication is disabled, return a guest user
+    if not AUTH_ENABLED:
+        print("Authentication disabled, returning guest user")
+        # Create a mock user object that mimics Supabase user structure
+        guest_user = UserRead(id="guest", email="guest@example.com", app_metadata={}, user_metadata={})
+        return guest_user
+        
     try:
         # Verify token with Supabase
         print(f"Verifying token: {credentials.credentials[:10]}...")

@@ -21,6 +21,9 @@ security = HTTPBearer()
 # Load environment variables from .env file
 load_dotenv()
 
+# Check if authentication is enabled
+AUTH_ENABLED = os.getenv("AUTH_ENABLED", "true").lower() == "true"
+
 # Initialize FastAPI app
 app = FastAPI()
 
@@ -205,9 +208,110 @@ async def transcribe_audio(
                 audio_path=Path(temp_path),
                 chunk_length=chunk_length,
                 overlap=overlap,
-                model=model
+                model=model,
+                temperature=temperature,
+                task=task  # Pass the task parameter to correctly select the API endpoint
             )
             logger.info("Audio processing completed successfully")
+
+            # Format the response based on the requested format
+            if response_format == "text":
+                logger.info("Returning text response")
+                return {"text": result.get("text", "")}
+            else:
+                # Return the full result for other formats
+                logger.info("Returning full JSON response")
+                return result
+
+        except Exception as e:
+            # Log the error
+            logger.error(f"Error processing audio: {type(e).__name__}: {str(e)}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error processing audio: {type(e).__name__}: {str(e)}"
+            )
+        finally:
+            # Clean up the temporary file
+            try:
+                os.unlink(temp_path)
+                logger.info(f"Removed temporary file: {temp_path}")
+            except Exception as e:
+                logger.warning(f"Error removing temporary file: {str(e)}")
+
+    except Exception as e:
+        # Log the error
+        logger.error(f"Error handling file upload: {type(e).__name__}: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error handling file upload: {type(e).__name__}: {str(e)}"
+        )
+
+@app.post("/audio/translate", response_model=TranscriptionResponse)
+async def translate_audio(
+    file: UploadFile = File(...),
+    model: str = Form(...),
+    response_format: str = Form("text"),
+    temperature: float = Form(0.0),
+    chunk_length: int = Form(600),  # Default to 10 minutes for better chunking
+    overlap: int = Form(10),
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    # Verify token first
+    try:
+        user = await verify_token(credentials)
+        if not user:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid or expired token"
+            )
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=401,
+            detail=f"Authentication failed: {str(e)}"
+        )
+        
+    """
+    Translate audio to English text using the Groq API.
+    """
+    logger = logging.getLogger(__name__)
+    
+    # Configure logging
+    logging.basicConfig(level=logging.DEBUG)
+    
+    # Log request details
+    logger.info(f"Received translation request for file: {file.filename}")
+    logger.info(f"Model: {model}, Response format: {response_format}")
+    logger.info(f"Chunk length: {chunk_length}, Overlap: {overlap}, Temperature: {temperature}")
+    
+    try:
+        # Create a temporary file to store the uploaded audio
+        with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix) as temp_file:
+            # Write the file content to the temporary file
+            content = await file.read()
+            temp_file.write(content)
+            temp_path = temp_file.name
+            
+            logger.info(f"Saved uploaded file to temporary path: {temp_path}")
+            logger.info(f"File size: {len(content) / 1024:.2f} KB")
+
+        try:
+            # Process the audio file
+            logger.info("Starting audio translation...")
+            result = transcribe_audio_in_chunks(
+                audio_path=Path(temp_path),
+                chunk_length=chunk_length,
+                overlap=overlap,
+                model=model,
+                temperature=temperature,
+                task="translate"  # Always use translate for this endpoint
+            )
+            logger.info("Audio translation completed successfully")
 
             # Format the response based on the requested format
             if response_format == "text":
@@ -276,6 +380,20 @@ async def get_models():
         raise HTTPException(status_code=e.response.status_code if hasattr(e, 'response') else 500,
                           detail=f"Error fetching models from Groq API: {str(e)}")
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Task options endpoint
+@app.get("/tasks")
+async def get_tasks():
+    """
+    Returns available task options for audio processing.
+    """
+    try:
+        # Return available task options
+        task_options = ["transcribe", "translate"]
+        return {"tasks": task_options}
+    except Exception as e:
+        logging.error(f"Error getting task options: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Run the application

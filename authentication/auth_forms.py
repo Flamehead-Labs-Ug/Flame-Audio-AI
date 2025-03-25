@@ -1,20 +1,30 @@
-import streamlit as st
 import os
+import requests
+import streamlit as st
+import json
+import logging
+from pathlib import Path
 from dotenv import load_dotenv
 from supabase import create_client, Client
 import uuid
 import streamlit_antd_components as sac
-import requests
-import json
 import base64
-import logging
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("auth_forms")
 
-# Load environment variables
-load_dotenv()
+# Check if authentication is enabled
+AUTH_ENABLED = os.getenv("AUTH_ENABLED", "true").lower() == "true"
+
+# Get backend URL from environment variables
+BACKEND_URL = os.getenv("BACKEND_URL")
+if not BACKEND_URL:
+    logger.error("BACKEND_URL not found in environment variables. Please set it in the .env file.")
+    # Cannot use st.error here as this module might be imported before streamlit is ready
 
 # Get Supabase credentials from environment variables
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -73,6 +83,13 @@ def clear_session_data():
 
 def init_auth_session():
     """Initialize authentication session state variables"""
+    # If authentication is disabled, set authenticated to True and bypass checks
+    if not AUTH_ENABLED:
+        logger.info("Authentication disabled via environment settings")
+        st.session_state.authenticated = True
+        st.session_state.user = {"email": "guest@example.com", "id": "guest"}
+        return
+        
     if "authenticated" not in st.session_state:
         logger.info("Initializing authentication session state")
         # Check for existing session token in persistent storage
@@ -82,7 +99,7 @@ def init_auth_session():
             try:
                 # Verify token using FastAPI backend
                 response = requests.get(
-                    "http://localhost:8000/auth/verify",
+                    f"{BACKEND_URL}/auth/verify",
                     headers={"Authorization": f"Bearer {auth_token}"})
                 logger.info(f"Token verification response: {response.status_code}")
                 
@@ -176,9 +193,7 @@ def auth_forms():
     """Display authentication forms"""
     # Create a compact container for the popover
     with st.container():
-        # Add logo with smaller size
-        st.image("logos/flame logo.jpg", width=100)
-        st.subheader("Flame Speech to Text")
+        
         
         # Create tabs for login and signup
         tab1, tab2 = st.tabs(["Login", "Sign Up"])
@@ -200,7 +215,7 @@ def auth_forms():
                     try:
                         # Sign in using FastAPI backend
                         response = requests.post(
-                            "http://localhost:8000/auth/login",
+                            f"{BACKEND_URL}/auth/login",
                             json={"email": email, "password": password}
                         )
                         
@@ -253,7 +268,7 @@ def auth_forms():
                             try:
                                 # Sign up using FastAPI backend
                                 response = requests.post(
-                                    "http://localhost:8000/auth/signup",
+                                    f"{BACKEND_URL}/auth/signup",
                                     json={"email": email, "password": password}
                                 )
                                 
@@ -275,7 +290,7 @@ def logout():
             if "_auth_token_" in st.session_state:
                 # Call logout endpoint
                 response = requests.post(
-                    "http://localhost:8000/auth/logout",
+                    f"{BACKEND_URL}/auth/logout",
                     headers={"Authorization": f"Bearer {st.session_state['_auth_token_']}"}
                 )
                 
