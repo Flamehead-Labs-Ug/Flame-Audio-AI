@@ -9,6 +9,7 @@ from supabase import create_client, Client
 import uuid
 import streamlit_antd_components as sac
 import base64
+import extra_streamlit_components as stx
 
 # Load environment variables
 load_dotenv()
@@ -37,113 +38,96 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 # Initialize Supabase client
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-# Use an absolute path for the session file
-# Store in user's home directory to ensure write permission
-SESSION_FILE = os.path.join(os.path.expanduser("~"), ".flame_session_data")
-logger.info(f"Using session file: {SESSION_FILE}")
+# Cookie management
+def get_cookie_manager():
+    """Get or create a cookie manager"""
+    if 'cookie_manager' not in st.session_state:
+        st.session_state.cookie_manager = stx.CookieManager()
+    return st.session_state.cookie_manager
 
-def save_session_data(token):
-    """Save token to a persistent file"""
+# Session management
+def save_session_data(token, user_data=None):
+    """Save token to a cookie"""
     try:
-        # Create a simple encoded token
-        encoded = base64.b64encode(token.encode()).decode()
-        with open(SESSION_FILE, "w") as f:
-            f.write(encoded)
-        logger.info(f"Successfully saved session data to {SESSION_FILE}")
+        cookie_manager = get_cookie_manager()
+        # Store token in cookie with 24 hour expiry
+        cookie_manager.set("auth_token", token, expires_at=24*60*60)
+        
+        # Also store user ID if available
+        if user_data and "id" in user_data:
+            cookie_manager.set("user_id", user_data["id"], expires_at=24*60*60)
+            
+        logger.info(f"Session data saved to cookie")
         return True
     except Exception as e:
         logger.error(f"Error saving session: {e}")
         return False
 
 def load_session_data():
-    """Load token from persistent file"""
+    """Load token from cookie"""
     try:
-        if os.path.exists(SESSION_FILE):
-            logger.info(f"Session file found at {SESSION_FILE}")
-            with open(SESSION_FILE, "r") as f:
-                encoded = f.read().strip()
-                if encoded:
-                    token = base64.b64decode(encoded).decode()
-                    logger.info("Successfully loaded session token")
-                    return token
-                else:
-                    logger.warning("Session file exists but is empty")
+        cookie_manager = get_cookie_manager()
+        token = cookie_manager.get("auth_token")
+        
+        if token:
+            logger.info("Session token loaded from cookie")
+            return token
         else:
-            logger.info("No session file found")
+            logger.info("No session token found in cookie")
+            return None
     except Exception as e:
         logger.error(f"Error loading session: {e}")
-    return None
+        return None
 
 def clear_session_data():
-    """Remove the persistent session file"""
+    """Clear session data from cookies"""
     try:
-        if os.path.exists(SESSION_FILE):
-            os.remove(SESSION_FILE)
-            logger.info(f"Removed session file {SESSION_FILE}")
-        else:
-            logger.info("No session file to remove")
+        cookie_manager = get_cookie_manager()
+        cookie_manager.delete("auth_token")
+        cookie_manager.delete("user_id")
+        logger.info("Session data cleared")
+        return True
     except Exception as e:
         logger.error(f"Error clearing session: {e}")
+        return False
 
 def init_auth_session():
-    """Initialize authentication session state variables"""
-    # If authentication is disabled, set authenticated to True and bypass checks
-    if not AUTH_ENABLED:
-        logger.info("Authentication disabled via environment settings")
-        st.session_state.authenticated = True
-        st.session_state.user = {"email": "guest@example.com", "id": "guest"}
-        return
-        
+    """Initialize authentication session state variables using cookies"""
+    # Initialize base session state for UI
     if "authenticated" not in st.session_state:
-        logger.info("Initializing authentication session state")
-        # Check for existing session token in persistent storage
-        auth_token = load_session_data()
-        if auth_token:
-            logger.info("Found existing auth token, verifying...")
-            try:
-                # Verify token using FastAPI backend
-                response = requests.get(
-                    f"{BACKEND_URL}/auth/verify",
-                    headers={"Authorization": f"Bearer {auth_token}"})
-                logger.info(f"Token verification response: {response.status_code}")
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    logger.info("Token verification successful")
-                    st.session_state.authenticated = True
-                    st.session_state.user = data
-                    st.session_state["_auth_token_"] = auth_token
-                    logger.info("Session restored successfully")
-                else:
-                    # Clear invalid session
-                    logger.warning(f"Token verification failed: {response.text}")
-                    st.session_state.authenticated = False
-                    st.session_state.user = None
-                    if "_auth_token_" in st.session_state:
-                        del st.session_state["_auth_token_"]
-                    clear_session_data()
-            except Exception as e:
-                # Log the error for debugging
-                logger.error(f"Authentication error: {str(e)}")
-                # Clear invalid session
-                st.session_state.authenticated = False
-                st.session_state.user = None
-                if "_auth_token_" in st.session_state:
-                    del st.session_state["_auth_token_"]
-                clear_session_data()
-        else:
-            logger.info("No existing auth token found")
-            st.session_state.authenticated = False
-            st.session_state.user = None
-    else:
-        logger.info(f"Authentication state already initialized: {st.session_state.authenticated}")
+        st.session_state.authenticated = False
     
-    # Always regenerate auth_state if not in the middle of authentication flow
-    # This ensures a fresh state for each authentication attempt
-    if "auth_state" not in st.session_state or not st.query_params.get("state"):
-        st.session_state.auth_state = str(uuid.uuid4())
-        # Store the state in session state to persist across page refreshes
-        st.session_state["_auth_state_"] = st.session_state.auth_state
+    if "user" not in st.session_state:
+        st.session_state.user = None
+    
+    # Try to load token from cookie
+    auth_token = load_session_data()
+    
+    if auth_token:
+        # Verify token with backend
+        try:
+            response = requests.get(
+                f"{BACKEND_URL}/auth/verify",
+                headers={"Authorization": f"Bearer {auth_token}"}
+            )
+            
+            if response.status_code == 200:
+                # Token is valid, set session state
+                user_data = response.json()
+                st.session_state.authenticated = True
+                st.session_state.user = user_data
+                logger.info("User authenticated from cookie")
+                return
+            else:
+                # Token is invalid, clear it
+                clear_session_data()
+                logger.warning("Invalid session token in cookie")
+        except Exception as e:
+            logger.error(f"Error verifying token: {e}")
+    
+    # If we get here, either no token or invalid token
+    st.session_state.authenticated = False
+    st.session_state.user = None
 
 def handle_auth_callback():
     """Handle authentication callback from Supabase"""
@@ -166,14 +150,12 @@ def handle_auth_callback():
             # Get the user from the session
             user = supabase.auth.get_user(query_params["access_token"])
             
-            # Set the session state and store authentication persistently
+            # Set the session state and store authentication in cookie
             st.session_state.authenticated = True
             st.session_state.user = user
-            st.session_state["_auth_user_"] = user  # Store user data persistently
-            st.session_state["_auth_token_"] = query_params["access_token"]
-
-            # Store the token in a persistent file
-            save_session_data(query_params["access_token"])
+            
+            # Store the token in a cookie
+            save_session_data(query_params["access_token"], user)
             
             # Clear the state and URL parameters
             if "auth_state" in st.session_state:
@@ -225,16 +207,12 @@ def auth_forms():
                         
                         if response.status_code == 200:
                             data = response.json()
-                            # Set session state and store session data
+                            # Set session state and store session data in cookie
                             st.session_state.authenticated = True
                             st.session_state.user = data["user"]
-                            st.session_state["_auth_token_"] = data["access_token"]
-                            st.session_state["_auth_user_"] = data["user"]
-                            st.session_state["_auth_state_"] = str(uuid.uuid4())
-                            st.session_state["_request_headers_"] = {"Authorization": f"Bearer {data['access_token']}"}
-
-                            # Store the token in persistent storage
-                            save_session_data(data["access_token"])
+                            
+                            # Store the token in cookie
+                            save_session_data(data["access_token"], data["user"])
                         
                             # Show success message and reload
                             st.success("Login successful!")
@@ -290,33 +268,28 @@ def logout():
     """Log out the current user"""
     if st.session_state.authenticated:
         try:
-            # Remove token from session state and clear persistent data
-            if "_auth_token_" in st.session_state:
+            # Remove token from cookie and clear session state
+            auth_token = load_session_data()
+            
+            if auth_token:
                 # Call logout endpoint
                 response = requests.post(
                     f"{BACKEND_URL}/auth/logout",
-                    headers={"Authorization": f"Bearer {st.session_state['_auth_token_']}"}
+                    headers={"Authorization": f"Bearer {auth_token}"}
                 )
                 
-                # Clear session state
-                del st.session_state["_auth_token_"]
+                # Clear cookies
+                clear_session_data()
             
-            # Clear the persistent session data
-            clear_session_data()
-            
-            # Reset session state
+            # Clear session state
             st.session_state.authenticated = False
             st.session_state.user = None
             
-            # Clear all authentication-related session state
-            for key in list(st.session_state.keys()):
-                if key.startswith("_auth_"):
-                    del st.session_state[key]
-            
+            # Show success message and reload
             st.success("Successfully logged out!")
             st.rerun()
             
         except Exception as e:
             st.error(f"Error logging out: {str(e)}")
     else:
-        st.warning("You are not currently logged in.")
+        st.warning("You are not logged in.")

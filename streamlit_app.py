@@ -40,88 +40,27 @@ if not BACKEND_URL:
     st.error("BACKEND_URL not found in environment variables. Please set it in the .env file.")
     st.stop()
 
-# Configure page layout
-
 # Initialize authentication session
 init_auth_session()
 
 # Check for authentication callback
 handle_auth_callback()
 
-# Auth Debug expander - Hidden per user request
-# Uncomment the following block to show the Auth Debug panel
-# with st.sidebar.expander("Auth Debug Info", expanded=False):
-#     st.write(f"Authenticated: {st.session_state.get('authenticated', False)}")
-#     if st.session_state.get('authenticated', False):
-#         st.write(f"User: {st.session_state.get('user')}")
-#     
-#     # Show if session file exists
-#     session_token = load_session_data()
-#     st.write(f"Session file exists: {session_token is not None}")
-#     
-#     if st.button("Force Reload"):
-#         st.rerun()
-
-# Initialize session state
-if 'init_completed' not in st.session_state:
-    st.session_state.init_completed = False
-
-# Initialize session state for model if not already set
-if 'selected_model' not in st.session_state:
-    st.session_state.selected_model = None  # No default model
+# Sidebar - Company info and auth controls
+with st.sidebar:
+    # Title
+    st.image("logos/flame logo.jpg", width=80)
+    st.markdown("### Flame Audio")
     
-if 'transcription_result' not in st.session_state:
-    st.session_state.transcription_result = None  # Initialize result storage
-        
-# Initialize default values for advanced settings if not already set
-if 'chunk_length' not in st.session_state:
-    st.session_state.chunk_length = 600  # Default to 10 minutes
-if 'overlap' not in st.session_state:
-    st.session_state.overlap = 5  # Default overlap
-if 'temperature' not in st.session_state:
-    st.session_state.temperature = 0.0  # Default temperature (explicitly set as float)
-
-# Initialize task options in session state
-if "task_options" not in st.session_state:
-    try:
-        # Try to get task options from backend
-        response = requests.get(f"{BACKEND_URL}/tasks")
-        if response.status_code == 200:
-            st.session_state.task_options = response.json()["tasks"]
-        else:
-            # Fallback to defaults if backend doesn't have this endpoint
-            st.session_state.task_options = ["transcribe", "translate"]
-    except Exception:
-        # Fallback to defaults if backend request fails
-        st.session_state.task_options = ["transcribe", "translate"]
-
-# Initialize current task in session state
-if "current_task" not in st.session_state:
-    st.session_state.current_task = "transcribe"  # Default task
-
-# Initialize groq_api_key_input variable with a default empty string
-groq_api_key_input = ""
-
-# Sidebar configuration
-# Add logo at the top of the sidebar
-st.sidebar.image("logos/flame logo.jpg", width=250)
-
-# Title after the logo
-st.sidebar.title("Flame Audio")
-
-# Show authentication status based on AUTH_ENABLED setting
-if AUTH_ENABLED:
-    # Authentication UI only when enabled
-    if not st.session_state.authenticated:
-        # Display authentication forms if not authenticated
-        with st.sidebar:
-            auth_forms()
-    else:
-        # Show logout button if authenticated
-        with st.sidebar:
-            if st.button("Sign Out", key="logout_button", use_container_width=True):
-                logout()
-                st.rerun()
+    # Authentication UI
+    if not st.session_state.authenticated and AUTH_ENABLED:
+        auth_forms()
+    elif AUTH_ENABLED:
+        st.success(f"Logged in as: {st.session_state.user.get('email', '')}")
+        if st.button("Logout", use_container_width=True, type="primary"):
+            logout()
+    
+    st.markdown("---")
 
 # Only show API key input and model selection if authenticated or auth is disabled
 if st.session_state.authenticated or not AUTH_ENABLED:
