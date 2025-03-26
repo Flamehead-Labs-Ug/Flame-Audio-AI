@@ -167,8 +167,7 @@ This guide provides step-by-step instructions for deploying Flame Audio on an AW
 5. Configure security groups to allow:
    - SSH (Port 22) - For administration
    - HTTP (Port 80) - For web access
-   - HTTPS (Port 443) - For secure web access
-   - Port 8501 (Optional) - Direct access to Streamlit for debugging
+   - HTTPS (Port 443) - For secure web access (optional)
 6. Launch the instance and create/select a key pair
 
 ### 2. Connect to Your EC2 Instance
@@ -186,8 +185,8 @@ sudo apt update && sudo apt upgrade -y
 # Install Python and other dependencies
 sudo apt install -y python3 python3-pip python3-venv nginx
 
-# Install development tools and ffmpeg (required for audio processing)
-sudo apt install -y build-essential python3-dev ffmpeg
+# Install development tools
+sudo apt install -y build-essential python3-dev
 ```
 
 ### 4. Clone the Repository
@@ -218,8 +217,8 @@ Edit the `.env` file to set your configuration:
 GROQ_API_KEY=your_groq_api_key
 API_KEY_INPUT_ENABLED=false
 AUTH_ENABLED=true
-BACKEND_URL=https://your-domain-name/api  # Use your domain name if configured
-FRONTEND_URL=https://your-domain-name     # Must match your domain name for authentication to work
+BACKEND_URL=http://your-domain-name/api  # Use your domain name if configured
+FRONTEND_URL=http://your-domain-name     # Must match your domain name for authentication to work
 SUPABASE_URL=your_supabase_url
 SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
@@ -294,81 +293,37 @@ sudo systemctl start flame-streamlit
 sudo nano /etc/nginx/sites-available/flame-audio
 ```
 
-Add the following optimized configuration:
+Add the following configuration:
 
 ```
 server {
-    server_name your-domain-name your-ec2-public-ip;
+    listen 80;
+    server_name your-ec2-public-ip;
     
     client_max_body_size 100M;
     
     # FastAPI Backend
     location /api/ {
-        proxy_pass http://localhost:8000/;
-        proxy_http_version 1.1;
-        proxy_set_header Host $http_host;
+        proxy_pass http://127.0.0.1:8000/;
+        proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $server_name;
-        
-        # Explicitly allow all methods
-        proxy_method $request_method;
-        
-        # CORS headers
-        add_header 'Access-Control-Allow-Origin' '*' always;
-        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE' always;
-        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
-        
-        # Handle OPTIONS preflight requests
-        if ($request_method = 'OPTIONS') {
-            add_header 'Access-Control-Allow-Origin' '*' always;
-            add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE' always;
-            add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
-            add_header 'Access-Control-Max-Age' 1728000;
-            add_header 'Content-Type' 'text/plain charset=UTF-8';
-            add_header 'Content-Length' 0;
-            return 204;
-        }
-        
         client_max_body_size 100M;
     }
     
     # Streamlit Frontend
     location / {
-        proxy_pass http://localhost:8501;
-        proxy_http_version 1.1;
-        
-        # Headers
-        proxy_set_header Host $http_host;
+        proxy_pass http://127.0.0.1:8501/;
+        proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        
-        # WebSocket support
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        
-        # Disable caching and buffering
-        proxy_redirect off;
-        proxy_buffering off;
-        proxy_cache_bypass $http_upgrade;
-        
-        # Increase timeouts
         proxy_read_timeout 86400;
         client_max_body_size 100M;
     }
-
-    # Static assets handling
-    location /static {
-        proxy_pass http://localhost:8501/static;
-        proxy_set_header Host $http_host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    listen 80;
 }
 ```
 
@@ -381,35 +336,15 @@ sudo nginx -t  # Test configuration
 sudo systemctl restart nginx
 ```
 
-### 10. Set Up SSL with Let's Encrypt (Recommended)
+### 10. Verify the Deployment
 
-If you have a domain name pointing to your EC2 instance:
-
-```bash
-sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d your-domain-name
-```
-
-Follow the prompts to complete the SSL setup.
-
-### 11. Session Management and Authentication
-
-This application uses cookie-based session management to ensure proper isolation of user sessions. When deployed on a server, each user gets their own session stored in browser cookies rather than server-side storage.
-
-This implementation:
-- Prevents session leakage between users
-- Works correctly with the Nginx reverse proxy
-- Supports both transcription and translation via dedicated Groq API endpoints
-
-### 12. Verify the Deployment
-
-Open your browser and navigate to your domain or EC2 instance's public IP address:
+Open your browser and navigate to your EC2 instance's public IP address:
 
 ```
-https://your-domain-name
+http://your-ec2-public-ip
 ```
 
-### 13. Troubleshooting
+### 11. Troubleshooting
 
 - **Check service status:**
   ```bash
@@ -427,10 +362,19 @@ https://your-domain-name
 
 - **Common Issues:**
   - 502 Bad Gateway: FastAPI service not running or port conflict
-  - 413 Request Entity Too Large: Check client_max_body_size in Nginx config
+  - 413 Request Entity Too Large: Increase client_max_body_size in Nginx config
   - Connection refused: Check security group settings in AWS console
-  - Login issues: Verify FRONTEND_URL and BACKEND_URL in .env
-  - Blank page: Ensure Nginx is correctly proxying to Streamlit
+
+### 12. (Optional) Set Up SSL with Let's Encrypt
+
+For a production environment, you should secure your application with HTTPS:
+
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d yourdomain.com
+```
+
+Follow the prompts to complete the SSL certificate installation.
 
 ## Contributing
 

@@ -40,13 +40,36 @@ if not BACKEND_URL:
     st.error("BACKEND_URL not found in environment variables. Please set it in the .env file.")
     st.stop()
 
+# Configure page layout
+
 # Initialize authentication session
 init_auth_session()
 
 # Check for authentication callback
 handle_auth_callback()
 
-# Initialize session state variables
+# Auth Debug expander - Hidden per user request
+# Uncomment the following block to show the Auth Debug panel
+# with st.sidebar.expander("Auth Debug Info", expanded=False):
+#     st.write(f"Authenticated: {st.session_state.get('authenticated', False)}")
+#     if st.session_state.get('authenticated', False):
+#         st.write(f"User: {st.session_state.get('user')}")
+#     
+#     # Show if session file exists
+#     session_token = load_session_data()
+#     st.write(f"Session file exists: {session_token is not None}")
+#     
+#     if st.button("Force Reload"):
+#         st.rerun()
+
+# Initialize session state
+if 'init_completed' not in st.session_state:
+    st.session_state.init_completed = False
+
+# Initialize session state for model if not already set
+if 'selected_model' not in st.session_state:
+    st.session_state.selected_model = None  # No default model
+    
 if 'transcription_result' not in st.session_state:
     st.session_state.transcription_result = None  # Initialize result storage
         
@@ -76,25 +99,29 @@ if "task_options" not in st.session_state:
 if "current_task" not in st.session_state:
     st.session_state.current_task = "transcribe"  # Default task
 
-# Initialize selected model in session state
-if "selected_model" not in st.session_state:
-    st.session_state.selected_model = None
+# Initialize groq_api_key_input variable with a default empty string
+groq_api_key_input = ""
 
-# Sidebar - Company info and auth controls
-with st.sidebar:
-    # Title
-    st.image("logos/flame logo.jpg", width=80)
-    st.markdown("### Flame Audio")
-    
-    # Authentication UI
-    if not st.session_state.authenticated and AUTH_ENABLED:
-        auth_forms()
-    elif AUTH_ENABLED:
-        st.success(f"Logged in as: {st.session_state.user.get('email', '')}")
-        if st.button("Logout", use_container_width=True, type="primary"):
-            logout()
-    
-    st.markdown("---")
+# Sidebar configuration
+# Add logo at the top of the sidebar
+st.sidebar.image("logos/flame logo.jpg", width=250)
+
+# Title after the logo
+st.sidebar.title("Flame Audio")
+
+# Show authentication status based on AUTH_ENABLED setting
+if AUTH_ENABLED:
+    # Authentication UI only when enabled
+    if not st.session_state.authenticated:
+        # Display authentication forms if not authenticated
+        with st.sidebar:
+            auth_forms()
+    else:
+        # Show logout button if authenticated
+        with st.sidebar:
+            if st.button("Sign Out", key="logout_button", use_container_width=True):
+                logout()
+                st.rerun()
 
 # Only show API key input and model selection if authenticated or auth is disabled
 if st.session_state.authenticated or not AUTH_ENABLED:
@@ -272,20 +299,22 @@ with col2:
     speech_container = st.container(border=True)
     with speech_container:
         st.subheader("SPEECH")
-        # Recording interface
-        st.subheader("Click to record")
-        
-        # Use the audio recorder with explicit parameters to avoid loading issues
+        # Audio recorder component with extended recording duration
         audio_bytes = audio_recorder(
-            energy_threshold=0.01,  # Lower threshold for easier recording
-            pause_threshold=2.0,    # 2 seconds of silence to stop recording
-            sample_rate=44100,      # Standard sample rate
-            text="Click to record",  # Explicit button text
-            recording_color="#e8b62c",
-            neutral_color="#6aa36f"
+            key="recorder",
+            pause_threshold=120.0,  # Set a longer pause threshold (2 minutes)
+            sample_rate=44100  # Higher quality audio recording
         )
         
-        if audio_bytes:
+        # Initialize delete button state if not already set
+        if 'delete_recording_clicked' not in st.session_state:
+            st.session_state.delete_recording_clicked = False
+
+        # Function to handle deletion
+        def delete_recorded_audio():
+            st.session_state.delete_recording_clicked = True
+
+        if audio_bytes is not None:
             st.session_state.recorded_audio = audio_bytes
             st.success("✅ Recording complete!")
             
@@ -311,7 +340,7 @@ with col2:
                         "🗑️ Delete Recording", 
                         type="secondary", 
                         key="delete_recording_button",
-                        on_click=lambda: st.session_state.update({"delete_recording_clicked": True}),
+                        on_click=delete_recorded_audio,
                         use_container_width=True
                     )
                 
@@ -319,7 +348,7 @@ with col2:
                 st.audio(audio_bytes, format="audio/wav")
                 
         # Check if delete button was clicked and handle deletion
-        if st.session_state.get("delete_recording_clicked", False):
+        if st.session_state.delete_recording_clicked:
             # Remove the temporary file
             try:
                 if 'recorded_file' in st.session_state and os.path.exists(st.session_state.recorded_file):
