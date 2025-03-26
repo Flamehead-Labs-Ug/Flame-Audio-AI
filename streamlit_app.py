@@ -272,22 +272,20 @@ with col2:
     speech_container = st.container(border=True)
     with speech_container:
         st.subheader("SPEECH")
-        # Audio recorder component with extended recording duration
+        # Recording interface
+        st.subheader("Click to record")
+        
+        # Use the audio recorder with explicit parameters to avoid loading issues
         audio_bytes = audio_recorder(
-            key="recorder",
-            pause_threshold=120.0,  # Set a longer pause threshold (2 minutes)
-            sample_rate=44100  # Higher quality audio recording
+            energy_threshold=0.01,  # Lower threshold for easier recording
+            pause_threshold=2.0,    # 2 seconds of silence to stop recording
+            sample_rate=44100,      # Standard sample rate
+            text="Click to record",  # Explicit button text
+            recording_color="#e8b62c",
+            neutral_color="#6aa36f"
         )
         
-        # Initialize delete button state if not already set
-        if 'delete_recording_clicked' not in st.session_state:
-            st.session_state.delete_recording_clicked = False
-
-        # Function to handle deletion
-        def delete_recorded_audio():
-            st.session_state.delete_recording_clicked = True
-
-        if audio_bytes is not None:
+        if audio_bytes:
             st.session_state.recorded_audio = audio_bytes
             st.success("✅ Recording complete!")
             
@@ -313,7 +311,7 @@ with col2:
                         "🗑️ Delete Recording", 
                         type="secondary", 
                         key="delete_recording_button",
-                        on_click=delete_recorded_audio,
+                        on_click=lambda: st.session_state.update({"delete_recording_clicked": True}),
                         use_container_width=True
                     )
                 
@@ -321,7 +319,7 @@ with col2:
                 st.audio(audio_bytes, format="audio/wav")
                 
         # Check if delete button was clicked and handle deletion
-        if st.session_state.delete_recording_clicked:
+        if st.session_state.get("delete_recording_clicked", False):
             # Remove the temporary file
             try:
                 if 'recorded_file' in st.session_state and os.path.exists(st.session_state.recorded_file):

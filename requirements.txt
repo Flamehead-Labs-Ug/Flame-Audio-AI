@@ -10,6 +10,6 @@ python-multipart==0.0.9
 groq==0.4.1
 ffmpeg-python==0.2.0
 streamlit_antd_components==0.3.2
-audio-recorder-streamlit
+audio-recorder-streamlit==0.0.10
 supabase==2.3.5
 extra-streamlit-components==0.1.60
