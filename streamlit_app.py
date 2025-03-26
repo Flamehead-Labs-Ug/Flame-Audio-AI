@@ -46,6 +46,40 @@ init_auth_session()
 # Check for authentication callback
 handle_auth_callback()
 
+# Initialize session state variables
+if 'transcription_result' not in st.session_state:
+    st.session_state.transcription_result = None  # Initialize result storage
+        
+# Initialize default values for advanced settings if not already set
+if 'chunk_length' not in st.session_state:
+    st.session_state.chunk_length = 600  # Default to 10 minutes
+if 'overlap' not in st.session_state:
+    st.session_state.overlap = 5  # Default overlap
+if 'temperature' not in st.session_state:
+    st.session_state.temperature = 0.0  # Default temperature (explicitly set as float)
+
+# Initialize task options in session state
+if "task_options" not in st.session_state:
+    try:
+        # Try to get task options from backend
+        response = requests.get(f"{BACKEND_URL}/tasks")
+        if response.status_code == 200:
+            st.session_state.task_options = response.json()["tasks"]
+        else:
+            # Fallback to defaults if backend doesn't have this endpoint
+            st.session_state.task_options = ["transcribe", "translate"]
+    except Exception:
+        # Fallback to defaults if backend request fails
+        st.session_state.task_options = ["transcribe", "translate"]
+
+# Initialize current task in session state
+if "current_task" not in st.session_state:
+    st.session_state.current_task = "transcribe"  # Default task
+
+# Initialize selected model in session state
+if "selected_model" not in st.session_state:
+    st.session_state.selected_model = None
+
 # Sidebar - Company info and auth controls
 with st.sidebar:
     # Title
