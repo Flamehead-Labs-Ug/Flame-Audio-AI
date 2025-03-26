@@ -35,8 +35,20 @@ logger.info(f"Using frontend URL: {FRONTEND_URL}")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 
-# Initialize Supabase client
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+# Initialize Supabase client with explicit options to avoid compatibility issues
+try:
+    # First try with default initialization
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+except TypeError:
+    # Fall back to a more explicit initialization without proxy
+    from supabase._sync.client import SyncClient
+    
+    # Create with explicit options dictionary that avoids the 'proxy' parameter
+    options = {
+        "auto_refresh_token": True,
+        "persist_session": True,
+    }
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY, options)
 
 # Cookie management
 def get_cookie_manager():
