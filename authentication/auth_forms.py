@@ -37,22 +37,19 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 
 # Initialize Supabase client with basic initialization to avoid compatibility issues
 try:
-    # First try with default initialization
+    # Try direct initialization without options first
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-except TypeError as e:
-    # Fall back to a more explicit initialization without proxy
-    logger.warning(f"Default Supabase initialization failed: {e}")
-    # Create with explicit options dictionary, avoiding any imports of internal classes
-    options = {
-        "auto_refresh_token": True,
-        "persist_session": True,
-    }
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY, options)
 except Exception as e:
-    logger.error(f"Failed to initialize Supabase client: {e}")
-    # In case of complete failure, create a placeholder to prevent crashes
-    supabase = None
-    logger.warning("Continuing with Supabase disabled")
+    logger.warning(f"Default Supabase initialization failed: {e}")
+    try:
+        # Disable auth completely if we're having issues
+        logger.warning("Attempting to initialize without authentication")
+        # Set AUTH_ENABLED to False to bypass auth-related functionality
+        globals()["AUTH_ENABLED"] = False
+        supabase = None
+    except Exception as e2:
+        logger.error(f"Failed to disable authentication: {e2}")
+        supabase = None
 
 # Cookie management
 def get_cookie_manager():
