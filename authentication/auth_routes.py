@@ -4,7 +4,10 @@ from pydantic import BaseModel
 from supabase import create_client, Client
 import os
 from dotenv import load_dotenv
-from pydantic import BaseModel
+import logging
+
+# Initialize logger
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -12,15 +15,20 @@ load_dotenv()
 # Get Supabase credentials from environment variables
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
-
-# Get frontend URL for redirects and CORS
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8501")
 
 # Check if authentication is enabled
 AUTH_ENABLED = os.getenv("AUTH_ENABLED", "true").lower() == "true"
 
-# Initialize Supabase client
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+# Initialize Supabase client with graceful error handling
+try:
+    # Try direct initialization without options
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+except Exception as e:
+    logger.warning(f"Default Supabase initialization failed: {e}")
+    # Simply set to None and continue - we'll check for None before using it
+    supabase = None
+    logger.warning("Continuing with Supabase disabled")
 
 # Create router
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -46,6 +54,13 @@ class UserRead(BaseModel):
 @router.post("/login")
 async def login(request: LoginRequest):
     try:
+        # Check if Supabase is initialized
+        if supabase is None:
+            raise HTTPException(
+                status_code=500,
+                detail="Supabase initialization failed"
+            )
+        
         # Sign in with Supabase using the correct method
         auth_response = supabase.auth.sign_in_with_password({
             "email": request.email,
@@ -84,7 +99,7 @@ async def login(request: LoginRequest):
         }
     except Exception as e:
         # Log the error for debugging
-        print(f"Login error: {str(e)}")
+        logger.error(f"Login error: {str(e)}")
         raise HTTPException(
             status_code=401,
             detail=f"Authentication failed: {str(e)}"
@@ -93,6 +108,13 @@ async def login(request: LoginRequest):
 @router.post("/signup")
 async def signup(request: SignupRequest):
     try:
+        # Check if Supabase is initialized
+        if supabase is None:
+            raise HTTPException(
+                status_code=500,
+                detail="Supabase initialization failed"
+            )
+        
         # Sign up with Supabase
         response = await supabase.auth.sign_up({
             "email": request.email,
@@ -126,6 +148,13 @@ async def signup(request: SignupRequest):
 @router.post("/logout")
 async def logout(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
+        # Check if Supabase is initialized
+        if supabase is None:
+            raise HTTPException(
+                status_code=500,
+                detail="Supabase initialization failed"
+            )
+        
         # Sign out with Supabase
         supabase.auth.sign_out(credentials.credentials)
         return {"message": "Logged out successfully"}
@@ -139,28 +168,35 @@ async def logout(credentials: HTTPAuthorizationCredentials = Depends(security)):
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     # If authentication is disabled, return a guest user
     if not AUTH_ENABLED:
-        print("Authentication disabled, returning guest user")
+        logger.info("Authentication disabled, returning guest user")
         # Create a mock user object that mimics Supabase user structure
         guest_user = UserRead(id="guest", email="guest@example.com", app_metadata={}, user_metadata={})
         return guest_user
         
     try:
+        # Check if Supabase is initialized
+        if supabase is None:
+            raise HTTPException(
+                status_code=500,
+                detail="Supabase initialization failed"
+            )
+        
         # Verify token with Supabase
-        print(f"Verifying token: {credentials.credentials[:10]}...")
+        logger.info(f"Verifying token: {credentials.credentials[:10]}...")
         response = supabase.auth.get_user(credentials.credentials)
         
         if not response or not response.user:
-            print("Invalid or expired token: No user found in response")
+            logger.info("Invalid or expired token: No user found in response")
             raise HTTPException(
                 status_code=401,
                 detail="Invalid or expired token"
             )
         
         # Return user object - ensure it has expected format
-        print(f"Token validation successful for user: {response.user.email}")
+        logger.info(f"Token validation successful for user: {response.user.email}")
         return response.user
     except Exception as e:
-        print(f"Token verification error: {str(e)}")
+        logger.error(f"Token verification error: {str(e)}")
         raise HTTPException(
             status_code=401,
             detail=f"Invalid or expired token: {str(e)}"
