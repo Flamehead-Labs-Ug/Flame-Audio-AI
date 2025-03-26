@@ -285,7 +285,7 @@ with col3:
         st.info("The audio will be automatically translated to English text, regardless of the source language.")
 
     # Note about language support
-    st.info("Note: The Models currently only supports transcribing in the original language or translating to English. Multi-language translation is not yet supported.")
+    st.info("Note: The Models currently only support transcribing in the original language or translating to English. Multi-language translation is not yet supported.")
 
 # Left column - System
 with col1:
