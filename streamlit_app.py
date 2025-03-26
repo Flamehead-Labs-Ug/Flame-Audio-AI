@@ -26,6 +26,7 @@ from authentication.auth_forms import auth_forms, handle_auth_callback, init_aut
 # Load environment variables
 load_dotenv()
 groq_api_key = os.getenv("GROQ_API_KEY")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8501")  # Default to localhost if not set
 
 # Check if authentication is enabled
 AUTH_ENABLED = os.getenv("AUTH_ENABLED", "true").lower() == "true"
@@ -284,7 +285,7 @@ with col3:
         st.info("The audio will be automatically translated to English text, regardless of the source language.")
 
     # Note about language support
-    st.info("Note: The Groq API currently only supports transcribing in the original language or translating to English. Multi-language translation is not yet supported.")
+    st.info("Note: The Models currently only supports transcribing in the original language or translating to English. Multi-language translation is not yet supported.")
 
 # Left column - System
 with col1:

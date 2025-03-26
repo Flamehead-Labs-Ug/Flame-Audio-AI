@@ -13,6 +13,9 @@ load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 
+# Get frontend URL for redirects and CORS
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8501")
+
 # Check if authentication is enabled
 AUTH_ENABLED = os.getenv("AUTH_ENABLED", "true").lower() == "true"
 

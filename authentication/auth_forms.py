@@ -26,6 +26,10 @@ if not BACKEND_URL:
     logger.error("BACKEND_URL not found in environment variables. Please set it in the .env file.")
     # Cannot use st.error here as this module might be imported before streamlit is ready
 
+# Get frontend URL from environment variables
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8501")
+logger.info(f"Using frontend URL: {FRONTEND_URL}")
+
 # Get Supabase credentials from environment variables
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
