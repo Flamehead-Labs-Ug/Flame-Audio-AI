@@ -76,28 +76,6 @@ if "task_options" not in st.session_state:
 if "current_task" not in st.session_state:
     st.session_state.current_task = "transcribe"  # Default task
 
-# Initialize language options with fallback
-if "language_options" not in st.session_state:
-    try:
-        # Try to get languages from backend
-        response = requests.get(f"{BACKEND_URL}/languages")
-        if response.status_code == 200:
-            st.session_state.language_options = response.json()["languages"]
-        else:
-            # Fallback to common languages if backend doesn't respond
-            st.session_state.language_options = [
-                "auto-detect", "english", "spanish", "french", "german", "italian", 
-                "portuguese", "russian", "japanese", "korean", "chinese", "arabic"
-            ]
-            st.warning("Using default language options. Backend not available.", icon="⚠️")
-    except Exception as e:
-        # Fallback to common languages if request fails
-        st.session_state.language_options = [
-            "auto-detect", "english", "spanish", "french", "german", "italian", 
-            "portuguese", "russian", "japanese", "korean", "chinese", "arabic"
-        ]
-        st.warning(f"Error loading languages: {str(e)}", icon="⚠️")
-
 # Initialize selected model in session state
 if "selected_model" not in st.session_state:
     st.session_state.selected_model = None
