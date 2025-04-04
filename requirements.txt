@@ -11,4 +11,20 @@ groq==0.4.1
 ffmpeg-python==0.2.0
 streamlit_antd_components==0.3.2
 audio-recorder-streamlit
-supabase==2.3.5
+supabase==1.2.0  # Downgraded to a more stable version
+httpx<0.25.0  # Restrict httpx version
+psycopg2-binary==2.9.9
+numpy>=1.26.0  # Updated for Python 3.12 compatibility
+extra-streamlit-components==0.1.60
+
+# Chat system dependencies
+langchain>=0.1.0
+langchain-groq>=0.1.0
+langchain-postgres>=0.0.13  # Updated to use the latest available version
+langchain-community>=0.0.16
+langchain-core>=0.1.0
+langchain-qdrant>=0.1.0  # Required for Qdrant vector store
+langgraph>=0.0.18
+sentence-transformers>=2.2.2
+vecs[text_embedding]>=0.3.1
+qdrant-client>=1.6.0  # Required for Qdrant vector store

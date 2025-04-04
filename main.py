@@ -14,6 +14,13 @@ import logging
 from supabase import create_client, Client
 import httpx
 from authentication.auth_routes import router as auth_router, verify_token
+from database.routes import router as db_router
+from database.vector_store import get_vector_store
+from authentication.auth import get_current_user
+from embedding import generate_embedding
+from database.chat_routes import router as chat_router
+from database.vector_store_routes import router as vector_store_router
+from database.pg_connector import get_pg_db
 
 # Initialize security scheme
 security = HTTPBearer()
@@ -25,7 +32,11 @@ load_dotenv()
 AUTH_ENABLED = os.getenv("AUTH_ENABLED", "true").lower() == "true"
 
 # Initialize FastAPI app
-app = FastAPI()
+app = FastAPI(
+    title="Flame Speech-to-Text API",
+    description="API for audio transcription and translation using Groq API",
+    version="1.0.0"
+)
 
 # Add CORS middleware
 app.add_middleware(
@@ -41,8 +52,35 @@ supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_ANON_KEY")
 supabase: Client = create_client(supabase_url, supabase_key)
 
-# Include authentication router
+# Include routers
 app.include_router(auth_router)
+app.include_router(db_router)
+app.include_router(chat_router)
+app.include_router(vector_store_router)
+
+# Initialize database connections
+@app.on_event("startup")
+async def startup_db_client():
+    try:
+        # Initialize PostgreSQL connection
+        pg_db = get_pg_db()
+        logging.info("PostgreSQL database connection initialized")
+        
+        # Initialize Vector Store connection
+        vector_store = get_vector_store()
+        logging.info("Vector Store connection initialized")
+    except Exception as e:
+        logging.error(f"Error initializing database connections: {e}")
+
+@app.on_event("shutdown")
+async def shutdown_db_client():
+    try:
+        # Close PostgreSQL connection
+        pg_db = get_pg_db()
+        pg_db.disconnect()
+        logging.info("PostgreSQL database connection closed")
+    except Exception as e:
+        logging.error(f"Error closing database connections: {e}")
 
 # Get Groq API key from environment
 groq_api_key = os.getenv("GROQ_API_KEY")
@@ -395,6 +433,21 @@ async def get_tasks():
     except Exception as e:
         logging.error(f"Error getting task options: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/embed")
+async def embed_text(text_data: dict, current_user = Depends(get_current_user)):
+    """Generate an embedding vector for the given text"""
+    if "text" not in text_data:
+        raise HTTPException(status_code=400, detail="Text field is required")
+        
+    try:
+        embedding = generate_embedding(text_data["text"])
+        return {
+            "embedding": embedding,
+            "dimensions": len(embedding)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating embedding: {str(e)}")
 
 # Run the application
 @app.get("/auth/verify")

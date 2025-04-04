@@ -266,25 +266,43 @@ def auth_forms():
                     submit = st.form_submit_button("Sign Up", use_container_width=True)
                     
                     if submit:
-                        if password != confirm_password:
+                        if not email or not password:
+                            st.error("Please enter both email and password.")
+                        elif password != confirm_password:
                             st.error("Passwords do not match!")
                         else:
                             try:
+                                st.info(f"Attempting to sign up with backend at {BACKEND_URL}/auth/signup")
+                                
                                 # Sign up using FastAPI backend
                                 response = requests.post(
                                     f"{BACKEND_URL}/auth/signup",
                                     json={"email": email, "password": password}
                                 )
                                 
+                                # Debug response
+                                st.text(f"Response status: {response.status_code}")
+                                
                                 if response.status_code == 200:
                                     data = response.json()
-                                    st.success("Sign up successful! Please check your email to confirm your account.")
+                                    st.success("Sign up successful! You can now login with your credentials.")
+                                    # Auto-switch to login tab
+                                    st.rerun()
                                 else:
-                                    error_message = response.json().get("detail", "Unknown error")
+                                    try:
+                                        error_data = response.json()
+                                        error_message = error_data.get("detail", "Unknown error")
+                                    except:
+                                        error_message = response.text or "Unknown error"
+                                        
                                     st.error(f"Sign up failed: {error_message}")
                                     
+                                    # If the error mentions "email already registered" suggest login
+                                    if "email already registered" in error_message.lower() or "user already registered" in error_message.lower():
+                                        st.info("It looks like you already have an account. Try logging in instead.")
+                                    
                             except Exception as e:
-                                st.error(f"Sign up failed: {str(e)}")
+                                st.error(f"Request error: {str(e)}")
 
 def logout():
     """Log out the current user"""
