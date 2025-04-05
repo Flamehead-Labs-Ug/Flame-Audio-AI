@@ -56,10 +56,10 @@ supabase_key = os.getenv("SUPABASE_ANON_KEY")
 supabase: Client = create_client(supabase_url, supabase_key)
 
 # Include routers
-app.include_router(auth_router)
-app.include_router(db_router)
-app.include_router(chat_router)
-app.include_router(vector_store_router)
+app.include_router(auth_router, prefix="/api")
+app.include_router(db_router, prefix="/api")
+app.include_router(chat_router, prefix="/api")
+app.include_router(vector_store_router, prefix="/api")
 
 # Initialize database connections
 @app.on_event("startup")
