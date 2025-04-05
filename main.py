@@ -33,9 +33,12 @@ AUTH_ENABLED = os.getenv("AUTH_ENABLED", "true").lower() == "true"
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="Flame Speech-to-Text API",
+    title="Flame Audio API",
     description="API for audio transcription and translation using Groq API",
-    version="1.0.0"
+    version="1.0.0",
+    openapi_url="/api/openapi.json",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc"
 )
 
 # Add CORS middleware
