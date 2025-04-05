@@ -185,7 +185,7 @@ async def validate_audio_file(file: UploadFile):
         temp_file.close()
         os.unlink(temp_file.name)
 
-@app.post("/audio/transcribe", response_model=TranscriptionResponse)
+@app.post("/api/audio/transcribe", response_model=TranscriptionResponse)
 async def transcribe_audio(
     file: UploadFile = File(...),
     model: str = Form(...),
@@ -291,7 +291,7 @@ async def transcribe_audio(
             detail=f"Error handling file upload: {type(e).__name__}: {str(e)}"
         )
 
-@app.post("/audio/translate", response_model=TranscriptionResponse)
+@app.post("/api/audio/translate", response_model=TranscriptionResponse)
 async def translate_audio(
     file: UploadFile = File(...),
     model: str = Form(...),
@@ -393,7 +393,7 @@ async def translate_audio(
 import httpx
 
 # Models endpoint
-@app.get("/models")
+@app.get("/api/models")
 async def get_models():
     """Get available audio models from Groq API."""
     try:
@@ -424,7 +424,7 @@ async def get_models():
         raise HTTPException(status_code=500, detail=str(e))
 
 # Task options endpoint
-@app.get("/tasks")
+@app.get("/api/tasks")
 async def get_tasks():
     """
     Returns available task options for audio processing.
@@ -437,7 +437,7 @@ async def get_tasks():
         logging.error(f"Error getting task options: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/embed")
+@app.post("/api/embed")
 async def embed_text(text_data: dict, current_user = Depends(get_current_user)):
     """Generate an embedding vector for the given text"""
     if "text" not in text_data:
@@ -453,12 +453,12 @@ async def embed_text(text_data: dict, current_user = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=f"Error generating embedding: {str(e)}")
 
 # Run the application
-@app.get("/auth/verify")
+@app.get("/api/auth/verify")
 async def verify_auth(user = Depends(verify_token)):
     """Verify if the user is authenticated"""
     return {"authenticated": True, "user": user.dict()}
 
-@app.post("/auth/logout")
+@app.post("/api/auth/logout")
 async def logout(user = Depends(verify_token)):
     """Log out the current user"""
     try:
