@@ -12,8 +12,8 @@ from datetime import datetime
 import threading
 import queue
 import copy
-#from database.vector_store import get_vector_store
-#from database.vector_store_realtime import initialize_vector_store_realtime
+from database.vector_store import get_vector_store
+from database.vector_store_realtime import initialize_vector_store_realtime
 
 # Configure page settings with title, favicon, and description
 st.set_page_config(
