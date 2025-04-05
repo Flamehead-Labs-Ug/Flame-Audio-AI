@@ -96,7 +96,7 @@ BASE_URL = "https://api.groq.com/openai/v1"
 # Import supported languages from configuration
 from languages import SUPPORTED_LANGUAGES
 
-@app.get("/languages")
+@app.get("/api/languages")
 async def get_supported_languages():
     """Get list of supported languages for transcription"""
     return {"languages": SUPPORTED_LANGUAGES}
