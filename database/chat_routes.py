@@ -602,34 +602,10 @@ async def chat_with_agent(chat_request: ChatRequest, background_tasks: Backgroun
                         user_id=str(current_user.id),  # Important for security - filter by current user
                         document_name=document_id if document_id else None,
                         agent_id=agent_id,  # Pass the agent_id to the search function
-                        limit=10  # Increase limit to get more potential matches
+                        limit=3  # Retrieve top 3 results
                     )
                     
-                    # If no results with embedding, try with text
-                    if not similar_documents and hasattr(vector_store, "search_by_text"):
-                        logger.info("No results with embedding, trying text search")
-                        similar_documents = vector_store.search_by_text(
-                            query_text=query,
-                            user_id=current_user.id,
-                            document_name=document_id,
-                            agent_id=agent_id,  # Pass the agent_id to the text search function
-                            limit=10  # Increase limit
-                        )
-                    
-                    # FALLBACK: If still no results, try brute force search
-                    if not similar_documents and hasattr(vector_store, "brute_force_search"):
-                        logger.info("No results with text search, trying brute force search")
-                        similar_documents = vector_store.brute_force_search(
-                            query_text=query,
-                            agent_id=agent_id,
-                            limit=10
-                        )
-                        
-                        # If we found documents with brute force, log them
-                        if similar_documents:
-                            logger.info(f"Brute force search found {len(similar_documents)} documents")
-                            for doc in similar_documents[:3]:  # Log first few for debugging
-                                logger.info(f"Found document: {doc.get('document_name')} - {doc.get('content')[:50]}...")
+                    # Fallbacks removed to ensure only top 3 vector search results are used
                     
                     # Handle case where no results are found
                     if not similar_documents:

@@ -568,8 +568,8 @@ class FlameVectorStore:
             if document_name:
                 filter_conditions.append(
                     qmodels.FieldCondition(
-                        key="document_name",
-                        match=qmodels.MatchValue(value=document_name)
+                        key="job_id", # Corrected key to filter by job_id
+                        match=qmodels.MatchValue(value=document_name) # Value is the job_id passed in
                     )
                 )
             
@@ -592,6 +592,7 @@ class FlameVectorStore:
                 return []
             
             # First try a more forgiving search without agent_id filter
+            # First try a more forgiving search without agent_id filter
             search_results = self.client.search(
                 collection_name=collection_name,
                 query_vector=embedding,
@@ -612,8 +613,17 @@ class FlameVectorStore:
                     if r.payload and r.payload.get("agent_id") == agent_id
                 ]
                 logger.info(f"After agent filtering: {len(filtered_results)} results remain")
+                # Log scores before applying the main threshold
+                if filtered_results:
+                    scores = [f"{r.score:.4f}" for r in filtered_results]
+                    logger.info(f"Scores before threshold ({similarity_threshold}): {scores}")
             else:
                 filtered_results = search_results
+                # Log scores if no agent filtering happened
+                if filtered_results:
+                    scores = [f"{r.score:.4f}" for r in filtered_results]
+                    logger.info(f"Scores before threshold ({similarity_threshold}) (no agent filter): {scores}")
+
             
             # If we found results, format and return them
             if filtered_results:
@@ -621,12 +631,12 @@ class FlameVectorStore:
                 final_results = [r for r in filtered_results if r.score >= similarity_threshold]
                 if final_results:
                     logger.info(f"Returning {len(final_results)} results after threshold filtering")
-                    return self._format_results(final_results)
+                    # Return only up to the originally requested limit
+                    return self._format_results(final_results[:limit])
                 else:
-                    # If no results remain after threshold filtering, take the best matches up to the limit
-                    final_results = sorted(filtered_results, key=lambda x: x.score, reverse=True)[:limit]
-                    logger.info(f"Using top {len(final_results)} results despite being below threshold")
-                    return self._format_results(final_results)
+                    # If no results remain after threshold filtering, return empty list
+                    logger.info(f"No results met the similarity threshold of {similarity_threshold}")
+                    return [] # Return empty list instead of low-score results
             
             # If no results with vector search, try text search
             logger.warning(f"No results found with vector search, retrying with lower threshold: 0.05")

@@ -60,26 +60,26 @@ init_auth_session()
 handle_auth_callback()
 
 # Auth Debug expander
-with st.sidebar.expander("Auth Debug Info", expanded=False):
-    st.write(f"Authenticated: {st.session_state.get('authenticated', False)}")
-    if st.session_state.get('authenticated', False):
-        st.write(f"User: {st.session_state.get('user')}")
-    
+#with st.sidebar.expander("Auth Debug Info", expanded=False):
+    #st.write(f"Authenticated: {st.session_state.get('authenticated', False)}")
+    #if st.session_state.get('authenticated', False):
+        #st.write(f"User: {st.session_state.get('user')}")
+
     # Show if session file exists
-    session_token = load_session_data()
-    st.write(f"Session file exists: {session_token is not None}")
-    
+    #session_token = load_session_data()
+    #st.write(f"Session file exists: {session_token is not None}")
+
     # Display all session state items
-    st.write("### Session State Contents:")
-    for key, value in st.session_state.items():
+    #st.write("### Session State Contents:")
+    #for key, value in st.session_state.items():
         # Skip displaying large objects or sensitive information
-        if key in ['_auth_token_', 'transcription_result']:
-            st.write(f"{key}: [Content hidden]")
-        else:
-            st.write(f"{key}: {value}")
-    
-    if st.button("Force Reload"):
-        st.rerun()
+        #if key in ['_auth_token_', 'transcription_result']:
+            #st.write(f"{key}: [Content hidden]")
+        #else:
+            #st.write(f"{key}: {value}")
+
+    #if st.button("Force Reload"):
+        #st.rerun()
 
 # Initialize session state
 if 'init_completed' not in st.session_state:
@@ -88,10 +88,10 @@ if 'init_completed' not in st.session_state:
 # Initialize session state for model if not already set
 if 'selected_model' not in st.session_state:
     st.session_state.selected_model = None  # No default model
-    
+
 if 'transcription_result' not in st.session_state:
     st.session_state.transcription_result = None  # Initialize result storage
-        
+
 # Initialize default values for advanced settings if not already set
 if 'chunk_length' not in st.session_state:
     st.session_state.chunk_length = 600  # Default to 10 minutes
@@ -124,11 +124,11 @@ groq_api_key_input = ""
 # Initialize session state for agents
 if "current_agent_id" not in st.session_state:
     st.session_state.current_agent_id = None
-    
+
 # Initialize session state for agent name and system message
 if "agent_name" not in st.session_state:
     st.session_state.agent_name = ""
-    
+
 if "system_message" not in st.session_state:
     st.session_state.system_message = ""
 
@@ -136,7 +136,7 @@ if "system_message" not in st.session_state:
 def load_agents():
     if not AUTH_ENABLED or not st.session_state.get("authenticated", False):
         return []
-    
+
     try:
         response = requests.get(
             f"{BACKEND_URL}/db/agents",
@@ -145,7 +145,7 @@ def load_agents():
             },
             timeout=10
         )
-        
+
         if response.status_code == 200:
             return response.json()
         else:
@@ -160,11 +160,11 @@ def save_agent(name, system_message, agent_id=None):
     if not AUTH_ENABLED or not st.session_state.get("authenticated", False):
         st.error("You must be logged in to save agents")
         return None
-    
+
     if not name:
         st.error("Agent name is required")
         return None
-    
+
     try:
         # Prepare agent data
         agent_data = {
@@ -172,11 +172,11 @@ def save_agent(name, system_message, agent_id=None):
             "system_message": system_message,
             "settings": {}
         }
-        
+
         # Add ID if updating existing agent
         if agent_id:
             agent_data["id"] = agent_id
-        
+
         # Make API request
         response = requests.post(
             f"{BACKEND_URL}/db/agents",
@@ -186,7 +186,7 @@ def save_agent(name, system_message, agent_id=None):
             },
             timeout=10
         )
-        
+
         if response.status_code == 200:
             result = response.json()
             return result.get("id")
@@ -203,12 +203,12 @@ def save_document_to_database(result, filename, user_id, selected_language, sele
     if not AUTH_ENABLED or not user_id:
         st.warning("Authentication is required to save transcriptions to the database.")
         return False
-    
+
     try:
         # Add debug logging for agent_id
         if status_area:
             status_area.info(f"Processing document with agent_id: {agent_id}")
-        
+
         # Gather document data for the API call
         document_data = {
             "filename": filename,
@@ -222,7 +222,7 @@ def save_document_to_database(result, filename, user_id, selected_language, sele
             "embedding_settings": vector_store_settings,
             "file_type": result.get("metadata", {}).get("file_extension", "audio")  # Add file type from metadata or default to audio
         }
-        
+
         # Ensure agent_id is included in embedding metadata for each segment
         if agent_id:
             # Update metadata for each segment to include agent_id
@@ -230,14 +230,14 @@ def save_document_to_database(result, filename, user_id, selected_language, sele
                 if "metadata" not in segment:
                     segment["metadata"] = {}
                 segment["metadata"]["agent_id"] = agent_id
-        
+
         # Make API request to start the document saving process
         auth_token = st.session_state.get('_auth_token_', '')
         if not auth_token:
             if status_area:
                 status_area.error(" No authentication token found. Please sign in again.")
             return False
-        
+
         # Use streamlit's spinner for a cleaner UI experience
         with st.spinner("Saving document to database..."):
             try:
@@ -250,7 +250,7 @@ def save_document_to_database(result, filename, user_id, selected_language, sele
                     },
                     timeout=60
                 )
-                
+
                 # Check if the request was successful
                 if response.status_code != 200:
                     if status_area:
@@ -260,23 +260,23 @@ def save_document_to_database(result, filename, user_id, selected_language, sele
                         except:
                             status_area.error(f" Error saving document: Status code {response.status_code}")
                     return False
-                
+
                 # Extract job ID from response
                 response_data = response.json()
                 job_id = response_data.get("job_id")
-                
+
                 if not job_id:
                     if status_area:
                         status_area.error(" No job ID returned from server")
                     return False
-                
+
                 # Poll for job completion with simpler logic
                 poll_interval = 2.0  # seconds
                 max_polls = 150  # maximum number of status checks (5 minutes)
                 for _ in range(max_polls):
                     # Sleep before making the request to prevent excessive polling
                     time.sleep(poll_interval)
-                    
+
                     # Get the current job status
                     status_response = requests.get(
                         f"{BACKEND_URL}/db/document_status/{job_id}",
@@ -285,11 +285,11 @@ def save_document_to_database(result, filename, user_id, selected_language, sele
                         },
                         timeout=5
                     )
-                    
+
                     if status_response.status_code == 200:
                         status_data = status_response.json()
                         job_status = status_data.get("status", "processing")
-                        
+
                         # If job completed successfully, break out of the loop
                         if job_status == "completed":
                             if status_area:
@@ -297,17 +297,17 @@ def save_document_to_database(result, filename, user_id, selected_language, sele
                             # Show balloons for celebration
                             st.balloons()
                             return True
-                    
+
                 # If we've reached here, the maximum number of polls was reached
                 if status_area:
                     status_area.warning(" Document processing is taking longer than expected. It may still complete in the background.")
                 return False
-                
+
             except Exception as e:
                 if status_area:
                     status_area.error(f" Error during document saving: {str(e)}")
                 return False
-    
+
     except Exception as e:
         # Show any exceptions that occurred
         if status_area:
@@ -315,11 +315,19 @@ def save_document_to_database(result, filename, user_id, selected_language, sele
         return False
 
 # Sidebar configuration
-# Add logo at the top of the sidebar
-st.sidebar.image("logos/flame logo.jpg", width=250)
+
 
 # Title after the logo
-st.sidebar.title("Flame Audio")
+st.sidebar.title("Flame Audio AI: Playground")
+
+# Navigation menu (always visible)
+with st.sidebar:
+    sac.menu([
+        sac.MenuItem('Home', icon='house-fill', href='/flamehome'),
+	    sac.MenuItem('Playground', icon='mic-fill'),
+        sac.MenuItem('Documents', icon='file-text-fill', href='/documents'),
+        sac.MenuItem('Chat', icon='chat-fill', href='/chat'),
+    ], open_all=True)
 
 # Show authentication status based on AUTH_ENABLED setting
 if AUTH_ENABLED:
@@ -328,7 +336,8 @@ if AUTH_ENABLED:
         # Display authentication forms if not authenticated
         with st.sidebar:
             auth_forms()
-    # Removed the duplicate sign out button here since it's in the user profile container
+
+# Removed the duplicate sign out button here since it's in the user profile container
 
 # Only show API key input and model selection if authenticated or auth is disabled
 if st.session_state.get("authenticated", False) or not AUTH_ENABLED:
@@ -364,7 +373,7 @@ if st.session_state.get("authenticated", False) or not AUTH_ENABLED:
 
     # Initialize models variable
     models = []
-    
+
     # Only try to load models if we have an API key
     if groq_api_key_input:
         with st.spinner("Loading available models..."):
@@ -383,7 +392,7 @@ if st.session_state.get("authenticated", False) or not AUTH_ENABLED:
 
             # Get the list of model options
             model_options = [model["id"] for model in models]
-            
+
             # Find the index of the currently selected model in the options
             default_index = None
             if st.session_state.get("selected_model") in model_options:
@@ -397,7 +406,7 @@ if st.session_state.get("authenticated", False) or not AUTH_ENABLED:
                 placeholder="Select a model",
                 help="Select the model to use for transcription/translation"
             )
-            
+
             # Update session state when model is changed
             st.session_state.selected_model = selected_model
 
@@ -414,7 +423,7 @@ if st.session_state.get("authenticated", False) or not AUTH_ENABLED:
     # Load agents
     agents = load_agents()
     agent_options = ["Create New Agent"] + [(agent["name"], agent["id"]) for agent in agents]
-    
+
     # Create selectbox for agents
     selected_agent = st.sidebar.selectbox(
         "Select Agent",
@@ -422,12 +431,12 @@ if st.session_state.get("authenticated", False) or not AUTH_ENABLED:
         format_func=lambda i: agent_options[i][0] if i > 0 else agent_options[i],
         index=0
     )
-    
+
     # Handle agent selection
     if selected_agent > 0:
         # User selected an existing agent
         agent_name, agent_id = agent_options[selected_agent]
-        
+
         # Load agent details if not already loaded or if different agent selected
         if st.session_state.get("current_agent_id") != agent_id:
             try:
@@ -438,16 +447,16 @@ if st.session_state.get("authenticated", False) or not AUTH_ENABLED:
                     },
                     timeout=10
                 )
-                
+
                 if response.status_code == 200:
                     agent_data = response.json()
                     st.session_state.agent_name = agent_data.get("name", "")
                     st.session_state.system_message = agent_data.get("system_message", "")
                     st.session_state.current_agent_id = agent_id
-                    
+
                     # Force document reload when agent changes
                     st.session_state.loading_documents = True
-                    
+
                     # Complete UI refresh when agent changes
                     st.rerun()
                 else:
@@ -460,10 +469,10 @@ if st.session_state.get("authenticated", False) or not AUTH_ENABLED:
             st.session_state.agent_name = ""
             st.session_state.system_message = ""
             st.session_state.current_agent_id = None
-            
+
             # Force document reload when agent changes
             st.session_state.loading_documents = True
-            
+
             # Complete UI refresh when agent is cleared
             st.rerun()
 
@@ -476,26 +485,30 @@ if st.session_state.get("authenticated", False) or not AUTH_ENABLED:
             st.markdown(f"**Signed in as:**")
             st.info(email)
             if st.button("Sign Out", key="sign_out_btn", use_container_width=True):
-                st.session_state.sign_out_requested = True
+                # Use the proper logout function from auth_forms.py
+                # This function handles clearing session state, session file, and backend logout
+                logout()
+
+# Social media links are now integrated into the Ant Design menu above
 
 # Create main UI layout
 title_col1, title_col2, title_col3 = st.columns([1, 2, 1])
 with title_col2:
-    st.title("Flame Audio Transcription")
-    
+    st.title("Flame Audio AI Playground")
+
 # Create a row with four columns for the action buttons
 button_col1, button_col2, button_col3, button_col4 = st.columns(4)
 
 # Add each button to its own column
 with button_col1:
     save_button = st.button("Save Agent", type="primary", use_container_width=True, key='save_agent_btn')
-    
-with button_col2:
-    view_code_button = st.button("View Code", type="secondary", use_container_width=True, key='view_code_btn')
-    
-with button_col3:
-    chat_button = st.button("Chat", type="secondary", use_container_width=True, key='chat_btn')
-    
+
+#with button_col2:
+    #view_code_button = st.button("View Code", type="secondary", use_container_width=True, key='view_code_btn')
+
+#with button_col3:
+    #chat_button = st.button("Chat", type="secondary", use_container_width=True, key='chat_btn')
+
 with button_col4:
     delete_button = st.button("Delete Agent", type="secondary", use_container_width=True, key='delete_agent_btn')
 
@@ -514,21 +527,21 @@ with col3:
             index=st.session_state.get("task_options", ["transcribe", "translate"]).index(st.session_state.get("current_task", "transcribe")) if st.session_state.get("current_task", "transcribe") in st.session_state.get("task_options", ["transcribe", "translate"]) else 0,
             help="transcribe: Keep the original language, translate: Convert any language to English"
         )
-        
+
         # Update the session state when task changes
         if task != st.session_state.get("current_task", "transcribe"):
             st.session_state.current_task = task
-        
+
         # Advanced settings expander
         with st.expander("Advanced Settings"):
             chunk_length = st.number_input(
-                "Chunk Length (seconds)", 
-                min_value=60, 
+                "Chunk Length (seconds)",
+                min_value=60,
                 max_value=3600,
                 value=st.session_state.get("chunk_length", 600),  # Default to 10 minutes for better processing
                 help="Length of each audio chunk in seconds. Smaller chunks process faster but may have more boundary issues."
             )
-            
+
             overlap = st.number_input(
                 "Chunk Overlap (seconds)",
                 min_value=0,
@@ -536,7 +549,7 @@ with col3:
                 value=st.session_state.get("overlap", 5),
                 help="Overlap between chunks in seconds to ensure smooth transitions."
             )
-            
+
             temperature = st.slider(
                 "Temperature",
                 min_value=0.0,
@@ -591,7 +604,7 @@ with col1:
         st.subheader("Agent Configuration")
         agent_name = st.text_input("Enter an agent name", value=st.session_state.get("agent_name", ""), key="agent_name_input")
         system_message = st.text_area("Enter a system message", value=st.session_state.get("system_message", ""), height=150, key="system_message_input")
-        
+
         # Update session state when inputs change
         st.session_state.agent_name = agent_name
         st.session_state.system_message = system_message
@@ -607,7 +620,7 @@ with col2:
             pause_threshold=120.0,  # Set a longer pause threshold (2 minutes)
             sample_rate=44100  # Higher quality audio recording
         )
-        
+
         # Initialize delete button state if not already set
         if 'delete_recording_clicked' not in st.session_state:
             st.session_state.delete_recording_clicked = False
@@ -619,12 +632,12 @@ with col2:
         if audio_bytes is not None:
             st.session_state.recorded_audio = audio_bytes
             st.success("Recording complete!")
-            
+
             # Save the recorded audio to a temporary file
             with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp_file:
                 tmp_file.write(audio_bytes)
                 st.session_state.recorded_file = tmp_file.name
-                
+
                 # Create a download button for the recorded audio
                 col1, col2 = st.columns(2)
                 with col1:
@@ -635,20 +648,20 @@ with col2:
                         mime="audio/wav",
                         use_container_width=True
                     )
-                
+
                 with col2:
                     # Add delete button - using a callback function for better state management
                     st.button(
-                        "Delete Recording", 
-                        type="secondary", 
+                        "Delete Recording",
+                        type="secondary",
                         key="delete_recording_button",
                         on_click=delete_recorded_audio,
                         use_container_width=True
                     )
-                
+
                 # Add playback of recorded audio
                 st.audio(audio_bytes, format="audio/wav")
-                
+
         # Check if delete button was clicked and handle deletion
         if st.session_state.delete_recording_clicked:
             # Remove the temporary file
@@ -658,23 +671,23 @@ with col2:
                     st.info("Temporary file removed")
             except Exception as e:
                 st.error(f"Error removing temporary file: {e}")
-            
+
             # Clear session state
             if 'recorded_audio' in st.session_state:
                 del st.session_state.recorded_audio
             if 'recorded_file' in st.session_state:
                 del st.session_state.recorded_file
-            
+
             # Reset the delete flag
             st.session_state.delete_recording_clicked = False
-            
+
             st.success("Recording deleted!")
             st.rerun()  # Refresh the page
         # Add transcribe button for recorded audio if audio was recorded
         if 'recorded_audio' in st.session_state and st.session_state.recorded_audio is not None:
             # Generate button text based on the selected task
             button_text = "Translate Recording" if st.session_state.get("current_task", "transcribe") == "translate" else "Transcribe Recording"
-            
+
             if st.button(button_text, type="primary", key="transcribe_recording", use_container_width=True):
                 # Check if a model is selected
                 if not st.session_state.get("selected_model"):
@@ -689,7 +702,7 @@ with col2:
                         "overlap": st.session_state.get("overlap", 5),
                         "temperature": st.session_state.get("temperature", 0.0)
                     }
-                    
+
                     # Add language if specified, but only if it's not None
                     if selected_language is not None:
                         form_data["language"] = selected_language
@@ -697,23 +710,23 @@ with col2:
                     # Create multipart form data
                     audio_bytes = st.session_state.recorded_audio
                     files = {"file": ("recorded_audio.wav", audio_bytes, "audio/wav")}
-                    
+
                     # Show progress
                     with st.spinner(f"Initializing {st.session_state.get('current_task', 'transcribe')}..."):
                         # Create a progress bar
                         progress_bar = st.progress(0)
-                        
+
                         try:
                             # Make request with timeout - send each parameter individually, not as a JSON string
                             progress_bar.progress(10, "Uploading file...")
-                            
+
                             # Start making the request
                             operation_type = "translation" if st.session_state.get("current_task", "transcribe") == "translate" else "transcription"
                             progress_bar.progress(30, f"Processing audio for {operation_type}...")
-                            
+
                             # Determine which endpoint to use based on the task
                             endpoint = "translate" if st.session_state.get("current_task", "transcribe") == "translate" else "transcribe"
-                            
+
                             response = requests.post(
                                 f"{BACKEND_URL}/audio/{endpoint}",
                                 files=files,
@@ -724,22 +737,22 @@ with col2:
                                 },
                                 timeout=600  # 10 minute timeout
                             )
-                            
+
                             progress_bar.progress(80, "Finalizing transcription...")
-                            
+
                             # Check response
                             if response.status_code == 200:
                                 st.session_state.transcription_result = response.json() # Store the result
                                 st.session_state["transcription_done"] = True
                                 operation_type = "translation" if st.session_state.get("current_task", "transcribe") == "translate" else "transcription"
                                 progress_bar.progress(100, f"{operation_type.capitalize()} complete!")
-                                
+
                                 # Store filename instead of automatically saving to database
                                 st.session_state.last_filename = "recorded_audio.wav"
                                 st.session_state.selected_model = st.session_state.get("selected_model")
                                 st.session_state.selected_language = selected_language
                                 st.session_state.last_file_content = audio_bytes
-                                
+
                                 # Show save documents message
                                 st.info("Transcription complete! Click 'Save Documents' below to generate embeddings and save to the database.")
                             else:
@@ -757,7 +770,7 @@ with col2:
                             st.error("The transcription request timed out after 10 minutes. The audio file might be too large or the server might be busy.")
                             st.info("Try using a smaller audio file or increasing the chunk size in the advanced settings.")
                             st.session_state.transcription_result = None
-                            
+
                         except requests.exceptions.ConnectionError:
                             st.error("Could not connect to the backend server. Make sure the FastAPI server is running.")
                             st.code("Run this command in a terminal to start the server: python -m uvicorn main:app --reload")
@@ -799,30 +812,30 @@ with col2:
                             "overlap": st.session_state.get("overlap", 5),
                             "temperature": st.session_state.get("temperature", 0.0)
                         }
-                        
+
                         # Add language if specified, but only if it's not None
                         if selected_language is not None:
                             form_data["language"] = selected_language
 
                         # Create multipart form data
                         files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
-                        
+
                         # Show progress
                         with st.spinner(f"Initializing {st.session_state.get('current_task', 'transcribe')}..."):
                             # Create a progress bar
                             progress_bar = st.progress(0)
-                            
+
                             try:
                                 # Make request with timeout - send each parameter individually, not as a JSON string
                                 progress_bar.progress(10, "Uploading file...")
-                                
+
                                 # Start making the request
                                 operation_type = "translation" if st.session_state.get("current_task", "transcribe") == "translate" else "transcription"
                                 progress_bar.progress(30, f"Processing audio for {operation_type}...")
-                                
+
                                 # Determine which endpoint to use based on the task
                                 endpoint = "translate" if st.session_state.get("current_task", "transcribe") == "translate" else "transcribe"
-                                
+
                                 response = requests.post(
                                     f"{BACKEND_URL}/audio/{endpoint}",
                                     files=files,
@@ -833,22 +846,22 @@ with col2:
                                     },
                                     timeout=600  # 10 minute timeout
                                 )
-                                
+
                                 progress_bar.progress(80, "Finalizing transcription...")
-                                
+
                                 # Check response
                                 if response.status_code == 200:
                                     st.session_state.transcription_result = response.json() # Store the result
                                     st.session_state["transcription_done"] = True
                                     operation_type = "translation" if st.session_state.get("current_task", "transcribe") == "translate" else "transcription"
                                     progress_bar.progress(100, f"{operation_type.capitalize()} complete!")
-                                    
+
                                     # Store filename instead of automatically saving to database
                                     st.session_state.last_filename = uploaded_file.name
                                     st.session_state.selected_model = st.session_state.get("selected_model")
                                     st.session_state.selected_language = selected_language
                                     st.session_state.last_file_content = uploaded_file.getvalue()
-                                    
+
                                     # Show save documents message
                                     st.info("Transcription complete! Click 'Save Documents' below to generate embeddings and save to the database.")
                                 else:
@@ -866,7 +879,7 @@ with col2:
                                 st.error("The transcription request timed out after 10 minutes. The audio file might be too large or the server might be busy.")
                                 st.info("Try using a smaller audio file or increasing the chunk size in the advanced settings.")
                                 st.session_state.transcription_result = None
-                                
+
                             except requests.exceptions.ConnectionError:
                                 st.error("Could not connect to the backend server. Make sure the FastAPI server is running.")
                                 st.code("Run this command in a terminal to start the server: python -m uvicorn main:app --reload")
@@ -882,12 +895,12 @@ if st.session_state.get("authenticated", False) or not AUTH_ENABLED:
     with results_container:
         # Determine operation type for labels
         operation_type = "Translation" if st.session_state.get("current_task", "transcribe") == "translate" else "Transcription"
-        
+
         # Add buttons at the top in a row
         if "transcription_result" in st.session_state and st.session_state.get("transcription_result") is not None:
             # Create a single column for the Clear button (removed Save Document button)
             clear_col = st.columns(1)[0]
-            
+
             # Clear results button
             with clear_col:
                 if st.button(f"Clear Results", type="secondary", use_container_width=True):
@@ -899,10 +912,10 @@ if st.session_state.get("authenticated", False) or not AUTH_ENABLED:
                     if "last_filename" in st.session_state:
                         st.session_state.pop("last_filename")
                     st.experimental_rerun()
-            
+
             # Create the tabs
             text_tab, segments_tab, json_tab = st.tabs(["Text", "Segments", "JSON"])
-            
+
             with text_tab:
                 # Display plain text in the text tab
                 st.markdown(f"### {operation_type} Text")
@@ -910,21 +923,21 @@ if st.session_state.get("authenticated", False) or not AUTH_ENABLED:
                 for segment in st.session_state["transcription_result"].get("segments", []):
                     if segment.get("text"):
                         full_text += segment.get("text") + " "
-                        
+
                 st.text_area("Full Text", full_text, height=400)
-                
+
                 # Add a download button for the text
                 download_text_btn = st.download_button(
-                    label="Download Text", 
+                    label="Download Text",
                     data=full_text,
                     file_name="transcription.txt",
                     mime="text/plain"
                 )
-                
+
             with segments_tab:
                 # Display segments with time information
                 st.markdown(f"### {operation_type} Segments with Timestamps")
-                
+
                 segments = st.session_state["transcription_result"].get("segments", [])
                 if segments:
                     # Create a DataFrame for the segments
@@ -939,34 +952,34 @@ if st.session_state.get("authenticated", False) or not AUTH_ENABLED:
                             "Duration": f"{int((end_time - start_time) // 60)}:{int((end_time - start_time) % 60):02d}",
                             "Text": segment.get("text", "")
                         })
-                        
+
                     # Convert to DataFrame and display
                     df = pd.DataFrame(segments_data)
                     st.dataframe(df, use_container_width=True, hide_index=True)
-                    
+
                     # Add a download button for the segments as CSV
                     download_csv_btn = st.download_button(
-                        label="Download Segments as CSV", 
+                        label="Download Segments as CSV",
                         data=df.to_csv(index=False),
                         file_name="transcription_segments.csv",
                         mime="text/csv"
                     )
                 else:
                     st.info("No segments available.")
-            
+
             with json_tab:
                 # Display the raw JSON for developers
                 st.markdown(f"### Raw JSON Output")
                 st.json(st.session_state["transcription_result"])
-                
+
                 # Add a download button for the JSON
                 download_json_btn = st.download_button(
-                    label="Download JSON", 
+                    label="Download JSON",
                     data=json.dumps(st.session_state["transcription_result"], indent=2),
                     file_name="transcription.json",
                     mime="application/json"
                 )
-            
+
             # Save functionality is implemented in a separate container at the end of this file
             # (see the container with border=True at the bottom of this script)
 
@@ -980,13 +993,7 @@ if AUTH_ENABLED and st.session_state.get("authenticated", False) and "user" in s
 if "agents" not in st.session_state:
     st.session_state.agents = load_agents()
 
-# Check if sign out was requested
-if st.session_state.get("sign_out_requested", False):
-    st.session_state.authenticated = False
-    st.session_state.pop("user", None)
-    st.session_state.pop("_auth_token_", None)
-    st.session_state.sign_out_requested = False
-    st.experimental_rerun()
+# Sign out is now handled by the logout() function from auth_forms.py
 
 # Create a separate container for the save functionality with a visual separator
 if "transcription_result" in st.session_state and st.session_state.get("transcription_result") is not None:
@@ -994,35 +1001,35 @@ if "transcription_result" in st.session_state and st.session_state.get("transcri
     st.write("")
     st.write("")
     st.markdown("---")
-    
+
     # Create a simpler container
     save_nav_container = st.container(border=True)
     with save_nav_container:
         st.markdown("## Save Your Transcription")
-        
+
         # Create columns for the layout
         col1, col2 = st.columns([3, 1])
-        
+
         with col1:
             st.info("Your transcription is ready to be saved. Click the button to proceed to the Save Document page.")
-            
+
             # Set the flag automatically since we already have transcription results
             st.session_state["save_requested"] = True
-        
+
         with col2:
             st.write("")
-            
+
             # Create a direct approach - just prepare the data and use the standard navigation
             if st.button("Save Document", key="save_doc_btn", type="primary", use_container_width=True):
                 # Just make sure the transcription is in session state and navigate
                 if "transcription_result" in st.session_state and st.session_state["transcription_result"] is not None:
                     # Set the flag to indicate a save is requested
                     st.session_state["save_requested"] = True
-                    
+
                     # Store transcription data in both variables for compatibility
                     st.session_state["_temp_transcription"] = st.session_state["transcription_result"]
                     st.session_state["_persistent_transcription"] = st.session_state["transcription_result"]
-                    
+
                     # Ensure all required session variables are preserved
                     # These are the variables needed by the Save Document page as listed by the user
                     required_vars = [
@@ -1043,10 +1050,10 @@ if "transcription_result" in st.session_state and st.session_state.get("transcri
                         "_auth_token_",
                         "chunk_length"
                     ]
-                    
+
                     # Log the session state before navigation for debugging
                     print("Session state before navigation:", [key for key in st.session_state.keys()])
-                    
+
                     # Navigate to the Save Document page
                     st.switch_page("pages/02_Save_Document.py")
                 else:

@@ -1,4 +1,6 @@
 import streamlit as st
+import streamlit_antd_components as sac
+
 
 # Page title and description
 st.set_page_config(page_title="Save Document", page_icon="📊", layout="wide")
@@ -15,7 +17,7 @@ import traceback
 sys.path.append(os.path.abspath('.'))
 
 # Try importing from flameaudio directly - no fallback since streamlit_app.py no longer exists
-from flameaudio import load_agents, save_document_to_database, BACKEND_URL, AUTH_ENABLED
+from pages.flameaudio import load_agents, save_document_to_database, BACKEND_URL, AUTH_ENABLED
 
 # Add a back button at the top of the page
 back_col1, back_col2 = st.columns([1, 9])
@@ -23,7 +25,7 @@ with back_col1:
     if st.button("⬅️ Back to Flame Audio", key="back_btn"):
         # Instead of direct switch_page, set a flag and use experimental_rerun
         st.session_state.navigate_to_main = True
-        
+
 with back_col2:
     st.title("Save Document to Vector Store")
 
@@ -88,16 +90,16 @@ col1, col2 = st.columns([1, 1])
 with col1:
     # Basic information section
     st.subheader("Document Information")
-    
+
     # Document name field (required)
-    doc_name = st.text_input("Document Name (required)", 
+    doc_name = st.text_input("Document Name (required)",
                           st.session_state.get("last_filename", "").split("/")[-1].split("\\")[-1].split(".")[0] if st.session_state.get("last_filename", "") else "")
-    
+
     # Document description field (optional)
-    doc_description = st.text_area("Document Description (optional)", 
-                                 height=100, 
+    doc_description = st.text_area("Document Description (optional)",
+                                 height=100,
                                  help="Add a description to help you find this document later")
-    
+
     # Display the currently selected agent
     if "current_agent_id" in st.session_state:
         # Get the agent information
@@ -108,7 +110,7 @@ with col1:
                 if agent["id"] == st.session_state.current_agent_id:
                     current_agent_name = agent["name"]
                     break
-            
+
             # Show the agent selection information in the UI
             st.info(f" Document will be associated with agent: **{current_agent_name}**")
             st.caption("To change the agent, select a different one from the sidebar.")
@@ -123,7 +125,7 @@ with col2:
     # Vector store configuration section
     st.subheader("Vector Store Configuration")
     st.info("Documents will be stored in Qdrant using collections named after the document ID.")
-    
+
     # Add embedding model configuration
     with st.expander("Embedding Model Settings", expanded=True):
         # Fetch available embedding models from API
@@ -141,10 +143,10 @@ with col2:
             st.warning(f"Could not fetch embedding models: {e}. Using defaults.")
             model_names = ["all-MiniLM-L6-v2", "all-mpnet-base-v2", "paraphrase-multilingual-MiniLM-L12-v2"]
             model_info = {}
-            
+
         # Get current vector store settings
         try:
-            vs_settings_response = requests.get(f"{BACKEND_URL}/vectorstore/settings", 
+            vs_settings_response = requests.get(f"{BACKEND_URL}/vectorstore/settings",
                                             headers={"Authorization": f"Bearer {st.session_state.get('_auth_token_', '')}"} if AUTH_ENABLED and st.session_state.get("authenticated", False) else {})
             if vs_settings_response.status_code == 200:
                 vs_settings = vs_settings_response.json()
@@ -168,7 +170,7 @@ with col2:
                 "match_count": 10,
                 "enabled": True
             }
-        
+
         # Create model selection
         selected_embedding_model = st.selectbox(
             "Embedding Model",
@@ -176,10 +178,10 @@ with col2:
             index=model_names.index(vs_settings.get("embedding_model", "all-MiniLM-L6-v2")) if vs_settings.get("embedding_model") in model_names else 0,
             help="Select the model to use for generating embeddings."
         )
-        
+
         # Add a note about what this means
         st.info("The selected embedding model will be used to encode the text for semantic search. Higher dimension models may provide better search accuracy but use more memory.")
-        
+
         # Add chunking configuration with sliders
         chunk_size = st.slider(
             "Chunk Size",
@@ -189,7 +191,7 @@ with col2:
             step=100,
             help="Size of text chunks for embedding (larger chunks provide more context but less precision)"
         )
-        
+
         chunk_overlap = st.slider(
             "Chunk Overlap",
             min_value=0,
@@ -201,8 +203,21 @@ with col2:
 
 # Add common elements to the sidebar
 with st.sidebar:
-    st.title("Flame Audio")
-    
+    st.title("Flame Audio AI: Save Document")
+
+# Navigation menu (always visible)
+with st.sidebar:
+    sac.menu([
+        sac.MenuItem('Home', icon='house-fill', href='/flamehome'),
+	    sac.MenuItem('Playground', icon='mic-fill', href='/flameaudio'),
+        sac.MenuItem('Documents', icon='file-text-fill', href='/documents'),
+        sac.MenuItem('Chat', icon='chat-fill', href='/chat'),
+    ], open_all=True)
+
+
+
+
+with st.sidebar:
     # User Profile Container at the bottom of sidebar
     st.sidebar.markdown("## User Profile")
     user_profile_container = st.sidebar.container(border=True)
@@ -212,15 +227,25 @@ with st.sidebar:
             st.markdown(f"**Signed in as:**")
             st.info(email)
             if st.button("Sign Out", key="sign_out_btn", use_container_width=True):
-                st.session_state.sign_out_requested = True
+                # Use the proper logout function from auth_forms.py
+                from authentication.auth_forms import logout
+                logout()
 
-# Check if sign out was requested
-if st.session_state.get("sign_out_requested", False):
-    st.session_state.authenticated = False
-    st.session_state.pop("user", None)
-    st.session_state.pop("_auth_token_", None)
-    st.session_state.sign_out_requested = False
-    st.experimental_rerun()
+
+with st.sidebar:
+    with st.container(border=True):
+        st.subheader("Connect with us")
+        sac.buttons([
+            sac.ButtonsItem(label='About FlameheadLabs', icon='info-circle', href='http://flameheadlabs.tech/'),
+            sac.ButtonsItem(label='Give 5 stars on Github', icon='github', href='https://github.com/Flamehead-Labs-Ug/flame-audio'),
+            sac.ButtonsItem(label='Follow on X', icon='twitter', href='https://x.com/flameheadlabsug'),
+            sac.ButtonsItem(label='Follow on Linkedin', icon='linkedin', href='https://www.linkedin.com/in/flamehead-labs-919910285'),
+            sac.ButtonsItem(label='Email', icon='mail', href='mailto:Flameheadlabs256@gmail.com'),
+        ],
+        label='',
+        align='center')
+
+# Sign out is now handled by the logout() function from auth_forms.py
 
 # Check if we should navigate back to main
 if st.session_state.get('navigate_to_main', False):
@@ -228,9 +253,9 @@ if st.session_state.get('navigate_to_main', False):
     st.session_state.navigate_to_main = False
     # Try to detect which main file exists and navigate to it
     main_file = None
-    if os.path.exists('flameaudio.py'):
-        main_file = 'flameaudio.py'
-    
+    if os.path.exists('pages/flameaudio.py'):
+        main_file = 'pages/flameaudio.py'
+
     if main_file:
         st.switch_page(main_file)
     else:
@@ -245,7 +270,7 @@ save_col1, save_col2 = st.columns(2)
 with save_col1:
     # Option to enable/disable vector storage
     vectorize_enabled = st.toggle(
-        "Enable Vector Search", 
+        "Enable Vector Search",
         value=True,
         help="Store embeddings for semantic search. Disable for faster saving but no semantic search capability."
     )
@@ -259,26 +284,26 @@ if not st.session_state.document_indexed:
     with save_col2:
         index_btn = st.button("Index & Save Document", type="primary", use_container_width=True,
                             help="Index document to Qdrant and save metadata to database in one step")
-    
+
     # Process indexing when the Index Document button is clicked
     if index_btn:
         # Check if transcription result exists and has segments
         if "transcription_result" not in st.session_state or not st.session_state.get("transcription_result"):
             status_area.error("No transcription results found to index. Please transcribe content first.")
             st.stop()
-            
+
         # Check if segments exist in the transcription result
         segments = st.session_state.get("transcription_result", {}).get("segments", [])
         if not segments:
             status_area.warning("No segments found in transcription results. Nothing to index.")
             st.session_state.document_indexed = True  # Still allow saving metadata
             st.rerun()
-        
+
         if not doc_name.strip():
             status_area.error("Document name is required")
         elif AUTH_ENABLED and st.session_state.get("authenticated", False) and '_auth_token_' in st.session_state:
             user_id = None
-            
+
             # Get user ID from token
             try:
                 user_id = st.session_state.get("user", {}).get("id")
@@ -288,7 +313,7 @@ if not st.session_state.document_indexed:
             except Exception as e:
                 status_area.error(f"Authentication error: {e}")
                 st.stop()
-            
+
             # Create vector store settings for the request
             vector_store_settings = {
                 "embedding_model": selected_embedding_model,
@@ -296,7 +321,7 @@ if not st.session_state.document_indexed:
                 "chunk_overlap": chunk_overlap,
                 "enabled": vectorize_enabled
             }
-            
+
             # Get agent ID if available
             if "current_agent_id" in st.session_state:
                 agent_id = st.session_state.current_agent_id
@@ -309,20 +334,20 @@ if not st.session_state.document_indexed:
             else:
                 agent_id = None
                 agent_name = "Default Agent"
-            
+
             if not vectorize_enabled:
                 status_area.warning("Vector search is disabled. No indexing will be performed.")
-                
+
             # COMBINED APPROACH: Index and save in one step
             try:
                 # Make sure selected_language is defined
                 selected_language = None
                 if "selected_language" in st.session_state:
                     selected_language = st.session_state.get("selected_language")
-                
+
                 # Create a progress indicator
                 combined_progress = st.progress(0)
-                
+
                 with st.spinner("Indexing and saving document..."):
                     # This is a simplified approach that does both indexing and saving
                     success = save_document_to_database(
@@ -335,10 +360,10 @@ if not st.session_state.document_indexed:
                         status_area=status_area,
                         vector_store_settings=vector_store_settings
                     )
-                    
+
                     # Update progress to show completion
                     combined_progress.progress(1.0)
-                
+
                 if success:
                     # Show success message
                     status_area.success("✅ Document successfully indexed and saved to database!")
@@ -359,6 +384,6 @@ else:
         if st.button("Start Over", type="secondary", use_container_width=True):
             st.session_state.document_indexed = False
             st.rerun()
-    
+
     with reset_col1:
         st.success("✅ Document has been successfully indexed and saved to the database!")
