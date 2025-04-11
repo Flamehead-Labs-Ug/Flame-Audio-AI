@@ -29,7 +29,7 @@ ENV/
 .env
 
 # Streamlit
-.streamlit/
+.streamlit/  # Uncommented to include Streamlit config in repository
 
 # IDE specific files
 .idea/
