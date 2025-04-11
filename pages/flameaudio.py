@@ -122,6 +122,12 @@ if "task_options" not in st.session_state:
 if "current_task" not in st.session_state:
     st.session_state.current_task = "transcribe"  # Default task
 
+# Function to check if a model supports translation
+def model_supports_translation(model_name):
+    # Currently, only whisper-large-v3 supports translation
+    # This can be expanded as more models support translation
+    return model_name == "whisper-large-v3"
+
 # Initialize groq_api_key_input variable with a default empty string
 groq_api_key_input = ""
 
@@ -329,6 +335,7 @@ with st.sidebar:
     sac.menu([
         sac.MenuItem('Home', icon='house-fill', href='/flamehome'),
 	    sac.MenuItem('Playground', icon='mic-fill'),
+        sac.MenuItem('Agents', icon='person-fill', href='/agents'),
         sac.MenuItem('Documents', icon='file-text-fill', href='/documents'),
         sac.MenuItem('Chat', icon='chat-fill', href='/chat'),
     ], open_all=True)
@@ -417,6 +424,13 @@ if st.session_state.get("authenticated", False) or not AUTH_ENABLED:
             # Show model description if available
             if selected_model_info and "description" in selected_model_info:
                 st.sidebar.info(selected_model_info["description"])
+
+            # Show translation support info
+            if st.session_state.get("current_task") == "translate":
+                if selected_model and model_supports_translation(selected_model):
+                    st.sidebar.success("✅ This model supports translation to English.")
+                else:
+                    st.sidebar.warning("⚠️ Translation requires the 'whisper-large-v3' model.")
     else:
         st.sidebar.error("No audio models available. Please check your API key and connection.")
         selected_model = None
@@ -535,6 +549,10 @@ with col3:
         # Update the session state when task changes
         if task != st.session_state.get("current_task", "transcribe"):
             st.session_state.current_task = task
+
+        # Show warning if translate is selected but model doesn't support it
+        if st.session_state.get("current_task") == "translate" and st.session_state.get("selected_model") and not model_supports_translation(st.session_state.get("selected_model")):
+            st.warning("⚠️ The selected model does not support translation. Please select 'whisper-large-v3' in the sidebar to use translation.")
 
         # Advanced settings expander
         with st.expander("Advanced Settings"):
@@ -761,15 +779,26 @@ with col2:
                                 st.info("Transcription complete! Click 'Save Documents' below to generate embeddings and save to the database.")
                             else:
                                 progress_bar.empty()
-                                st.error(f"Error: {response.status_code} - {response.text}")
-                                st.session_state.transcription_result = None # Clear any previous result
 
-                                # Show more detailed error information
+                                # Check for specific error about model not supporting translate
                                 try:
                                     error_json = response.json()
-                                    st.json(error_json)
+                                    error_detail = error_json.get("detail", "")
+
+                                    # Check if this is the "model does not support translate" error
+                                    if "does not support translate" in error_detail or "does not support `translate`" in error_detail:
+                                        st.error("⚠️ Translation Error: The selected model does not support translation.")
+                                        st.warning("Please select 'whisper-large-v3' in the sidebar model dropdown to use translation.")
+                                    else:
+                                        # Generic error message for other errors
+                                        st.error(f"Error: {response.status_code} - {error_detail}")
+                                        st.json(error_json)
                                 except:
+                                    # Fallback for when we can't parse the JSON
+                                    st.error(f"Error: {response.status_code} - {response.text}")
                                     st.code(response.text)
+
+                                st.session_state.transcription_result = None # Clear any previous result
                         except requests.exceptions.Timeout:
                             st.error("The transcription request timed out after 10 minutes. The audio file might be too large or the server might be busy.")
                             st.info("Try using a smaller audio file or increasing the chunk size in the advanced settings.")
@@ -870,15 +899,26 @@ with col2:
                                     st.info("Transcription complete! Click 'Save Documents' below to generate embeddings and save to the database.")
                                 else:
                                     progress_bar.empty()
-                                    st.error(f"Error: {response.status_code} - {response.text}")
-                                    st.session_state.transcription_result = None # Clear any previous result
 
-                                    # Show more detailed error information
+                                    # Check for specific error about model not supporting translate
                                     try:
                                         error_json = response.json()
-                                        st.json(error_json)
+                                        error_detail = error_json.get("detail", "")
+
+                                        # Check if this is the "model does not support translate" error
+                                        if "does not support translate" in error_detail or "does not support `translate`" in error_detail:
+                                            st.error("⚠️ Translation Error: The selected model does not support translation.")
+                                            st.warning("Please select 'whisper-large-v3' in the sidebar model dropdown to use translation.")
+                                        else:
+                                            # Generic error message for other errors
+                                            st.error(f"Error: {response.status_code} - {error_detail}")
+                                            st.json(error_json)
                                     except:
+                                        # Fallback for when we can't parse the JSON
+                                        st.error(f"Error: {response.status_code} - {response.text}")
                                         st.code(response.text)
+
+                                    st.session_state.transcription_result = None # Clear any previous result
                             except requests.exceptions.Timeout:
                                 st.error("The transcription request timed out after 10 minutes. The audio file might be too large or the server might be busy.")
                                 st.info("Try using a smaller audio file or increasing the chunk size in the advanced settings.")

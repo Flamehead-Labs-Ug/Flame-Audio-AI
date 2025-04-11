@@ -45,6 +45,7 @@ with st.sidebar:
     sac.menu([
         sac.MenuItem('Home', icon='house-fill', href='/flamehome'),
 	    sac.MenuItem('Playground', icon='mic-fill', href='/flameaudio'),
+        sac.MenuItem('Agents', icon='person-fill', href='/agents'),
         sac.MenuItem('Documents', icon='file-text-fill', href='/documents'),
         sac.MenuItem('Chat', icon='chat-fill'),
     ], open_all=True)

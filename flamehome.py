@@ -36,6 +36,7 @@ with st.sidebar:
     menu_selection = sac.menu([
         sac.MenuItem('Home', icon='house-fill', href='/'),
         sac.MenuItem('Playground', icon='mic-fill', href='/flameaudio'),
+        sac.MenuItem('Agents', icon='person-fill', href='/agents'),
         sac.MenuItem('Documents', icon='file-text-fill', href='/documents'),
         sac.MenuItem('Chat', icon='chat-fill', href='/chat'),
         sac.MenuItem(type='divider'),
@@ -51,6 +52,8 @@ with st.sidebar:
     # Handle menu navigation
     if menu_selection == 'documents':
         st.switch_page('pages/documents.py')
+    elif menu_selection == 'agents':
+        st.switch_page('pages/agents.py')
     elif menu_selection == 'save_document':
         st.switch_page('pages/02_Save_Document.py')
     elif menu_selection == 'chat':
@@ -153,6 +156,45 @@ with feat_col3:
     - AI-powered chat with visual context
     - Multiple export formats (SRT, VTT, CSV, JSON)
     - Customizable download options
+    """)
+
+# Agents Management section
+st.markdown("---")
+st.header("Agent Management")
+
+agent_col1, agent_col2, agent_col3 = st.columns(3)
+
+with agent_col1:
+    st.container(border=True, height=300).markdown("""
+    ### Create & Configure
+
+    - **Custom Agents**: Create specialized AI assistants
+    - **Personality Settings**: Define system messages
+    - **Document Organization**: Group related content
+    - **Easy Management**: View all agents in one place
+    - **Quick Access**: Direct links to view or chat
+    """)
+
+with agent_col2:
+    st.container(border=True, height=300).markdown("""
+    ### Agent Capabilities
+
+    - **Transcription Context**: Process audio with agent-specific knowledge
+    - **Translation Specialization**: Customize translation behavior
+    - **Document Grouping**: Organize documents by topic or project
+    - **Contextual Chat**: Interact with agent-specific knowledge
+    - **Persistent Settings**: Save preferences per agent
+    """)
+
+with agent_col3:
+    st.container(border=True, height=300).markdown("""
+    ### Workflow Integration
+
+    - **One-Click Access**: View or chat directly from agent cards
+    - **Centralized Management**: All agents in a single dashboard
+    - **Consistent Navigation**: Access agents from any page
+    - **Project Organization**: Create agents for different projects
+    - **Team Collaboration**: Share agents with team members
     """)
 
 # Playground Features section

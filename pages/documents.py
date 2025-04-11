@@ -41,6 +41,7 @@ with st.sidebar:
     sac.menu([
         sac.MenuItem('Home', icon='house-fill', href='/flamehome'),
 	    sac.MenuItem('Playground', icon='mic-fill', href='/flameaudio'),
+        sac.MenuItem('Agents', icon='person-fill', href='/agents'),
         sac.MenuItem('Documents', icon='file-text-fill'),
         sac.MenuItem('Chat', icon='chat-fill', href='/chat'),
     ], open_all=True)
@@ -54,7 +55,7 @@ if AUTH_ENABLED and not st.session_state.get("authenticated", False):
 
 
     # Display agent selection if authenticated
-with st.sidebar:    
+with st.sidebar:
     with st.expander("Agent Settings", expanded=True):
         if not AUTH_ENABLED or st.session_state.get("authenticated", False):
             # Fetch agents for the current user
