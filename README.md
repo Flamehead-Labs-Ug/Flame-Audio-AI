@@ -1,4 +1,4 @@
-# Flame Audio
+# Flame Audio AI
 
 <p align="center">
   <img src="logos/flame logo.jpg" alt="Flame Audio Logo" width="200"/>
@@ -6,11 +6,11 @@
 
 ## Overview
 
-Flame Audio is a powerful speech transcription, translation, and AI chat application built by FlameheadLabs. It allows users to easily convert spoken language to text through recorded audio or uploaded files, with optional account creation for saving transcription history and chatting with AI agents about your documents.
+Flame Audio AI is a powerful speech transcription, translation, and AI chat application built by FlameheadLabs. It allows users to easily convert spoken language to text through recorded audio or uploaded files, with optional account creation for saving transcription history and chatting with AI agents about your documents.
 
 ## Features
 
-### Audio Processing
+### Playground (Audio Processing)
 - **Live Audio Recording**: Record audio directly in the browser with high-quality settings
 - **File Upload**: Support for multiple audio formats (flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, webm)
 - **Multiple Models**: Integration with Groq API's advanced audio transcription models
@@ -30,14 +30,14 @@ Flame Audio is a powerful speech transcription, translation, and AI chat applica
 - **Realtime Updates**: Vector store configurations update in real-time across the application
 
 ### User Experience
-- **Intuitive Navigation**: Easily move between transcription, document storage, and chat interfaces
+- **Intuitive Navigation**: Easily move between Home, Playground, Documents, and Chat interfaces
 - **Responsive Design**: Clean, modern UI that works across devices
 - **Flexible Authentication**: Optional user authentication that can be enabled/disabled via configuration
 - **Persistent Settings**: User preferences persist between sessions
 
 ## Prerequisites
 
-- Python 3.9+ 
+- Python 3.9+
 - FastAPI backend server
 - Groq API key
 - PostgreSQL database
@@ -126,7 +126,7 @@ python -m uvicorn main:app --reload
 In a new terminal window:
 
 ```bash
-streamlit run streamlit_app.py
+streamlit run flamehome.py
 ```
 
 ### 3. Access the application
@@ -138,7 +138,7 @@ http://localhost:8501
 
 ## Usage Guide
 
-### Transcription and Translation
+### Playground (Transcription and Translation)
 
 1. **Authentication**: Log in or create an account (if authentication is enabled)
 2. **API Key**: Enter your Groq API key in the sidebar
@@ -159,7 +159,7 @@ http://localhost:8501
 
 1. **Create or Select an Agent**: Choose an existing agent or create a new one
 2. **Configure Settings**: Adjust model settings, system prompt, and vector store parameters
-3. **Choose Documents**: Select which documents the agent can access for context
+3. **Choose Documents**: Select a specific document the agent should focus on
 4. **Start Chatting**: Engage in conversation with the AI about your transcribed content
 5. **Manage Sessions**: Save multiple chat sessions and switch between them
 
@@ -285,7 +285,7 @@ After=network.target
 User=ubuntu
 WorkingDirectory=/home/ubuntu/flame-audio
 EnvironmentFile=/home/ubuntu/flame-audio/.env
-ExecStart=/home/ubuntu/flame-audio/venv/bin/streamlit run streamlit_app.py --server.address=0.0.0.0 --server.port=8501
+ExecStart=/home/ubuntu/flame-audio/venv/bin/streamlit run flamehome.py --server.address=0.0.0.0 --server.port=8501
 Restart=always
 
 [Install]
@@ -312,9 +312,9 @@ Add the following content, replacing `your-domain-name` with your actual domain 
 ```
 server {
     server_name your-domain-name your-ec2-public-ip;
-    
+
     client_max_body_size 100M;
-    
+
     # FastAPI Backend
     location /api/ {
         rewrite ^/api/(.*)$ /$1 break;
@@ -323,7 +323,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         client_max_body_size 100M;
     }
-    
+
     # Streamlit Frontend
     location / {
         proxy_pass http://your-ec2-public-ip:8501;
