@@ -7,6 +7,10 @@ import io
 import time
 import json
 import base64
+import zipfile
+import subprocess
+import random
+import re
 from dotenv import load_dotenv
 from datetime import datetime
 import threading
@@ -913,6 +917,23 @@ if st.session_state.get("authenticated", False) or not AUTH_ENABLED:
                         st.session_state.pop("last_filename")
                     st.experimental_rerun()
 
+            # Define helper function for generating filenames
+            def get_base_filename():
+                """Get a base filename from the original file, removing extension and sanitizing"""
+                # Get original filename from session state, or use a default
+                original_filename = st.session_state.get("last_filename", "transcription")
+
+                # Remove file extension if present
+                base_name = os.path.splitext(original_filename)[0]
+
+                # Replace invalid filename characters with underscores
+                base_name = re.sub(r'[\\/*?:"<>|]', "_", base_name)
+
+                return base_name
+
+            # Get base filename for downloads
+            base_filename = get_base_filename()
+
             # Create the tabs
             text_tab, segments_tab, json_tab = st.tabs(["Text", "Segments", "JSON"])
 
@@ -930,7 +951,7 @@ if st.session_state.get("authenticated", False) or not AUTH_ENABLED:
                 download_text_btn = st.download_button(
                     label="Download Text",
                     data=full_text,
-                    file_name="transcription.txt",
+                    file_name=f"{base_filename}.txt",
                     mime="text/plain"
                 )
 
@@ -957,13 +978,138 @@ if st.session_state.get("authenticated", False) or not AUTH_ENABLED:
                     df = pd.DataFrame(segments_data)
                     st.dataframe(df, use_container_width=True, hide_index=True)
 
-                    # Add a download button for the segments as CSV
-                    download_csv_btn = st.download_button(
-                        label="Download Segments as CSV",
-                        data=df.to_csv(index=False),
-                        file_name="transcription_segments.csv",
-                        mime="text/csv"
-                    )
+                    # Create functions for generating different export formats
+
+                    def generate_srt(segments):
+                        srt_content = ""
+                        for i, segment in enumerate(segments):
+                            start_time = segment.get("start", 0)
+                            end_time = segment.get("end", 0)
+
+                            # Format timestamps as HH:MM:SS,mmm
+                            start_formatted = f"{int(start_time//3600):02d}:{int((start_time%3600)//60):02d}:{int(start_time%60):02d},{int((start_time%1)*1000):03d}"
+                            end_formatted = f"{int(end_time//3600):02d}:{int((end_time%3600)//60):02d}:{int(end_time%60):02d},{int((end_time%1)*1000):03d}"
+
+                            srt_content += f"{i+1}\n{start_formatted} --> {end_formatted}\n{segment.get('text', '')}\n\n"
+
+                        return srt_content
+
+                    def generate_vtt(segments):
+                        vtt_content = "WEBVTT\n\n"
+                        for i, segment in enumerate(segments):
+                            start_time = segment.get("start", 0)
+                            end_time = segment.get("end", 0)
+
+                            # Format timestamps as HH:MM:SS.mmm
+                            start_formatted = f"{int(start_time//3600):02d}:{int((start_time%3600)//60):02d}:{int(start_time%60):02d}.{int((start_time%1)*1000):03d}"
+                            end_formatted = f"{int(end_time//3600):02d}:{int((end_time%3600)//60):02d}:{int(end_time%60):02d}.{int((end_time%1)*1000):03d}"
+
+                            vtt_content += f"{start_formatted} --> {end_formatted}\n{segment.get('text', '')}\n\n"
+
+                        return vtt_content
+
+                    def generate_premiere_markers_csv(segments):
+                        # Create CSV content with format compatible with Premiere Pro markers
+                        csv_content = "Name,Description,In,Out,Duration,Marker Type\n"
+
+                        for i, segment in enumerate(segments):
+                            start_time = segment.get("start", 0)
+                            end_time = segment.get("end", 0)
+                            duration = end_time - start_time
+
+                            # Format times as HH:MM:SS:FF (assuming 30fps)
+                            start_formatted = f"{int(start_time//3600):02d}:{int((start_time%3600)//60):02d}:{int(start_time%60):02d}:{int((start_time%1)*30):02d}"
+                            end_formatted = f"{int(end_time//3600):02d}:{int((end_time%3600)//60):02d}:{int(end_time%60):02d}:{int((start_time%1)*30):02d}"
+                            duration_formatted = f"{int(duration//3600):02d}:{int((duration%3600)//60):02d}:{int(duration%60):02d}:{int((duration%1)*30):02d}"
+
+                            text = segment.get("text", "").replace('"', '""')  # Escape quotes for CSV
+
+                            csv_content += f'"Segment {i+1}","{text}","{start_formatted}","{end_formatted}","{duration_formatted}","Comment"\n'
+
+                        return csv_content
+
+                    def generate_anki_csv(segments):
+                        # Create CSV content with format: audio_segment_filename,transcript
+                        csv_content = "audio,text,start_time,end_time\n"
+
+                        for i, segment in enumerate(segments):
+                            segment_filename = f"segment_{i+1:03d}.mp3"
+                            text = segment.get("text", "").replace('"', '""')  # Escape quotes for CSV
+                            start_time = segment.get("start", 0)
+                            end_time = segment.get("end", 0)
+
+                            csv_content += f'"{segment_filename}","{text}","{start_time}","{end_time}"\n'
+
+                        return csv_content
+
+                    # Create download section with multiple options
+                    st.markdown("### Download Options")
+
+                    # Get base filename for downloads
+                    base_filename = get_base_filename()
+
+                    # Create columns for download buttons
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        # Standard CSV download
+                        download_csv_btn = st.download_button(
+                            label="Download Segments as CSV",
+                            data=df.to_csv(index=False),
+                            file_name=f"{base_filename}_segments.csv",
+                            mime="text/csv",
+                            use_container_width=True
+                        )
+
+                        # SRT subtitle format
+                        download_srt_btn = st.download_button(
+                            label="Download as SRT Subtitles",
+                            data=generate_srt(st.session_state["transcription_result"].get("segments", [])),
+                            file_name=f"{base_filename}.srt",
+                            mime="text/plain",
+                            use_container_width=True
+                        )
+
+                    with col2:
+                        # WebVTT subtitle format
+                        download_vtt_btn = st.download_button(
+                            label="Download as WebVTT Subtitles",
+                            data=generate_vtt(st.session_state["transcription_result"].get("segments", [])),
+                            file_name=f"{base_filename}.vtt",
+                            mime="text/vtt",
+                            use_container_width=True
+                        )
+
+                        # Premiere Pro markers
+                        download_premiere_btn = st.download_button(
+                            label="Download as Premiere Markers",
+                            data=generate_premiere_markers_csv(st.session_state["transcription_result"].get("segments", [])),
+                            file_name=f"{base_filename}_premiere_markers.csv",
+                            mime="text/csv",
+                            use_container_width=True
+                        )
+
+                    # Advanced options in an expander
+                    with st.expander("Advanced Download Options"):
+                        col3, col4 = st.columns(2)
+
+                        with col3:
+                            # Anki flashcards format
+                            download_anki_btn = st.download_button(
+                                label="Download as Anki Flashcards CSV",
+                                data=generate_anki_csv(st.session_state["transcription_result"].get("segments", [])),
+                                file_name=f"{base_filename}_anki_flashcards.csv",
+                                mime="text/csv",
+                                use_container_width=True
+                            )
+
+                        with col4:
+                            # Audio segments extraction button
+                            if st.button("Extract Audio Segments", key="extract_segments_btn", use_container_width=True):
+                                with st.spinner("Preparing audio segments..."):
+                                    st.info("This feature requires ffmpeg to be installed on your system.")
+                                    st.info(f"For a complete implementation, audio segments from '{base_filename}' would be extracted and provided as a zip file.")
+                                    st.info("This would include each segment as a separate audio file along with its transcript.")
                 else:
                     st.info("No segments available.")
 
@@ -976,7 +1122,7 @@ if st.session_state.get("authenticated", False) or not AUTH_ENABLED:
                 download_json_btn = st.download_button(
                     label="Download JSON",
                     data=json.dumps(st.session_state["transcription_result"], indent=2),
-                    file_name="transcription.json",
+                    file_name=f"{base_filename}.json",
                     mime="application/json"
                 )
 

@@ -9,7 +9,6 @@ st.set_page_config(
 )
 
 import os
-import sys
 import streamlit_antd_components as sac
 from dotenv import load_dotenv
 
@@ -80,6 +79,7 @@ if not AUTH_ENABLED or st.session_state.get("authenticated", False):
 
 # Main content area - Landing Page
 st.title("Welcome to Flame Audio AI")
+st.subheader("Advanced Speech-to-Text with Multi-Format Export & Vector Search Visualization")
 
 # Hero section
 hero_col1, hero_col2 = st.columns([3, 2])
@@ -96,21 +96,23 @@ with hero_col1:
 
     - **High-Quality Transcription**: Convert speech to text with high accuracy
     - **Translation**: Translate audio from any language to English
+    - **Multiple Export Formats**: Download transcriptions as SRT, VTT, CSV, and more
     - **Document Management**: Save, organize, and search your transcriptions
     - **AI Chat**: Interact with your transcribed content through natural language
+    - **Vector Search Visualization**: See which parts of your documents are most relevant
     - **Agent System**: Create specialized agents for different types of content
     """)
 
     # Call-to-action buttons
     cta_col1, cta_col2, cta_col3 = st.columns(3)
     with cta_col1:
-        if st.button("Start Transcribing", type="primary", use_container_width=True):
+        if st.button("Start Transcribing", type="primary", use_container_width=True, key="hero_transcribe_btn"):
             st.switch_page("pages/flameaudio.py")
     with cta_col2:
-        if st.button("View Documents", use_container_width=True):
+        if st.button("View Documents", use_container_width=True, key="hero_documents_btn"):
             st.switch_page("pages/documents.py")
     with cta_col3:
-        if st.button("Chat with AI", use_container_width=True):
+        if st.button("Chat with Documents", use_container_width=True, key="hero_chat_btn"):
             st.switch_page("pages/chat.py")
 
 with hero_col2:
@@ -147,9 +149,88 @@ with feat_col3:
 
     Save your transcriptions to the database and interact with them through:
 
-    - Document search
-    - AI-powered chat
-    - Export options
+    - Document search with vector embeddings
+    - AI-powered chat with visual context
+    - Multiple export formats (SRT, VTT, CSV, JSON)
+    - Customizable download options
+    """)
+
+# Playground Features section
+st.markdown("---")
+st.header("Playground Features")
+
+playground_col1, playground_col2, playground_col3 = st.columns(3)
+
+with playground_col1:
+    st.container(border=True, height=320).markdown("""
+    ### Audio Processing
+
+    - **Live Recording**: High-quality browser recording
+    - **File Upload**: Support for multiple audio formats
+    - **Language Detection**: Automatic or manual selection
+    - **Task Options**: Transcribe or translate to English
+    - **Model Selection**: Choose from various AI models
+    """)
+
+with playground_col2:
+    st.container(border=True, height=320).markdown("""
+    ### Results & Analysis
+
+    - **Tabbed Interface**: Text, Segments, and JSON views
+    - **Segment Analysis**: Detailed timestamp information
+    - **Vector Search Results**: Visual representation of relevant content
+    - **Source Documents**: Complete context for AI responses
+    - **Interactive UI**: Expandable sections for detailed exploration
+    """)
+
+with playground_col3:
+    st.container(border=True, height=320).markdown("""
+    ### Export Options
+
+    - **Document-Named Files**: Downloads include original filename
+    - **Subtitle Formats**: SRT and WebVTT for video production
+    - **Data Formats**: CSV and JSON for analysis
+    - **Professional Tools**: Premiere Pro markers export
+    - **Advanced Options**: Specialized formats for various use cases
+    """)
+
+# Chat Features section
+st.markdown("---")
+st.header("AI Chat Features")
+
+chat_col1, chat_col2, chat_col3 = st.columns(3)
+
+with chat_col1:
+    st.container(border=True, height=350).markdown("""
+    ### Agent & Session Management
+
+    - **Customizable Agents**: Create AI agents with different personalities
+    - **Document-Specific Focus**: Chat about specific documents
+    - **Session Management**: Save, reload, and organize chat sessions
+    - **Real-time Updates**: Seamless conversation with real-time responses
+    - **Session History**: View and continue previous conversations
+    """)
+
+with chat_col2:
+    st.container(border=True, height=350).markdown("""
+    ### Vector Search Integration
+
+    - **Context-Aware Responses**: AI understands document content
+    - **Vector Search Visualization**: See which parts of documents are used
+    - **Configurable Search Parameters**: Adjust similarity threshold and result limits
+    - **Embedding Model Selection**: Choose from various embedding models
+    - **Chunk Size Configuration**: Optimize text segmentation for better results
+    """)
+
+with chat_col3:
+    st.container(border=True, height=350).markdown("""
+    ### Advanced Chat Settings
+
+    - **Model Selection**: Choose from various language models
+    - **System Prompt Customization**: Define how the AI should behave
+    - **Temperature Control**: Adjust creativity vs. determinism
+    - **Max Tokens Configuration**: Set response length limits
+    - **Top-P Sampling**: Fine-tune response diversity
     """)
 
 # Testimonials section
@@ -176,22 +257,42 @@ with test_col2:
 st.markdown("---")
 st.header("Getting Started")
 
-st.markdown("""
-1. **Sign Up**: Create an account to save your transcriptions
-2. **Set Up**: Configure your API key in the sidebar
-3. **Record or Upload**: Start with your first audio file
-4. **Process**: Transcribe or translate your audio
-5. **Explore**: Use the AI chat to interact with your transcriptions
-""")
+get_started_col1, get_started_col2 = st.columns(2)
+
+with get_started_col1:
+    st.markdown("""
+    ### Basic Steps
+    1. **Sign Up**: Create an account to save your transcriptions
+    2. **Set Up**: Configure your API key in the sidebar
+    3. **Record or Upload**: Start with your first audio file
+    4. **Process**: Transcribe or translate your audio
+    5. **Explore**: Use the AI chat to interact with your transcriptions
+    """)
+
+with get_started_col2:
+    st.markdown("""
+    ### Advanced Features
+    - **Export Your Data**: Download in multiple formats with original filename
+    - **Vector Search**: Visualize which parts of your documents are most relevant
+    - **Document-Specific Agents**: Create specialized AI assistants for different content
+    - **Interactive Segments**: Analyze audio with precise timestamp information
+    - **Custom Configurations**: Adjust model parameters for optimal results
+    """)
 
 # Call to action
 st.markdown("---")
-st.subheader("Ready to transform your audio content?")
+st.subheader("Ready to transform your audio content and chat with your documents?")
 
-final_cta_col1, final_cta_col2, final_cta_col3 = st.columns([2, 1, 2])
-with final_cta_col2:
-    if st.button("Get Started Now", type="primary", use_container_width=True):
+final_cta_col1, final_cta_col2, final_cta_col3 = st.columns(3)
+with final_cta_col1:
+    if st.button("Start Transcribing", type="primary", use_container_width=True, key="footer_transcribe_btn"):
         st.switch_page("pages/flameaudio.py")
+with final_cta_col2:
+    if st.button("Explore Documents", use_container_width=True, key="footer_documents_btn"):
+        st.switch_page("pages/documents.py")
+with final_cta_col3:
+    if st.button("Chat with AI", use_container_width=True, key="footer_chat_btn"):
+        st.switch_page("pages/chat.py")
 
 # Define footer HTML
 footer = """
