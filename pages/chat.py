@@ -1,4 +1,13 @@
 import streamlit as st
+
+# Page configuration - MUST be the first Streamlit command
+st.set_page_config(
+    page_title="Flame Audio AI: Chat",
+    page_icon="",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 import pandas as pd
 import requests
 import json
@@ -28,14 +37,6 @@ BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 # Check if authentication is enabled
 AUTH_ENABLED = os.getenv("AUTH_ENABLED", "true").lower() == "true"
-
-# Page configuration
-st.set_page_config(
-    page_title="Flame Audio AI: Chat",
-    page_icon="",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 
 with st.sidebar:
     st.title("Flame Audio AI: Chat")
