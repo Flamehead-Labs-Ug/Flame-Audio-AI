@@ -1,13 +1,4 @@
 import streamlit as st
-
-# Page configuration - MUST be the first Streamlit command
-st.set_page_config(
-    page_title="Flame Audio Documents",
-    page_icon="",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
 import pandas as pd
 import requests
 from datetime import datetime
@@ -30,6 +21,14 @@ load_dotenv()
 # Initialize authentication session and handle callback
 init_auth_session()
 handle_auth_callback()
+
+# Page configuration
+st.set_page_config(
+    page_title="Flame Audio Documents",
+    page_icon="",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 # Page title
 st.title("Documents")

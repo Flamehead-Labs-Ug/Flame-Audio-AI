@@ -1,9 +1,10 @@
 import streamlit as st
+import streamlit_antd_components as sac
 
-# Page configuration - MUST be the first Streamlit command
+
+# Page title and description
 st.set_page_config(page_title="Save Document", page_icon="📊", layout="wide")
 
-import streamlit_antd_components as sac
 import os
 import sys
 import json
