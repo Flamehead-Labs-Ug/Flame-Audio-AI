@@ -207,6 +207,35 @@ def save_agent(name, system_message, agent_id=None):
         st.error(f"Error saving agent: {str(e)}")
         return None
 
+# Function to delete agent from the database
+def delete_agent(agent_id):
+    if not AUTH_ENABLED or not st.session_state.get("authenticated", False):
+        st.error("You must be logged in to delete agents")
+        return False
+
+    if not agent_id:
+        st.error("No agent selected to delete")
+        return False
+
+    try:
+        # Make API request to delete the agent
+        response = requests.delete(
+            f"{BACKEND_URL}/db/agents/{agent_id}",
+            headers={
+                "Authorization": f"Bearer {st.session_state.get('_auth_token_', '')}"
+            },
+            timeout=10
+        )
+
+        if response.status_code == 200:
+            return True
+        else:
+            st.error(f"Failed to delete agent: {response.text}")
+            return False
+    except Exception as e:
+        st.error(f"Error deleting agent: {str(e)}")
+        return False
+
 # Define function to save to database using the new consolidated endpoint with polling
 def save_document_to_database(result, filename, user_id, selected_language, selected_model, progress_bar=None, agent_id=None, status_area=None, vector_store_settings=None):
     """Save a complete document with segments and embeddings in a single operation using backend processing"""
@@ -519,7 +548,9 @@ button_col1, button_col2, button_col3, button_col4 = st.columns(4)
 
 # Add each button to its own column
 with button_col1:
-    save_button = st.button("Save Agent", type="primary", use_container_width=True, key='save_agent_btn')
+    # Change button text based on whether we're creating a new agent or editing an existing one
+    button_text = "Create New Agent" if st.session_state.get("current_agent_id") is None else "Save Agent"
+    save_button = st.button(button_text, type="primary", use_container_width=True, key='save_agent_btn')
 
 #with button_col2:
     #view_code_button = st.button("View Code", type="secondary", use_container_width=True, key='view_code_btn')
@@ -528,7 +559,84 @@ with button_col1:
     #chat_button = st.button("Chat", type="secondary", use_container_width=True, key='chat_btn')
 
 with button_col4:
-    delete_button = st.button("Delete Agent", type="secondary", use_container_width=True, key='delete_agent_btn')
+    # Disable the delete button if no agent is selected
+    delete_button = st.button(
+        "Delete Agent",
+        type="secondary",
+        use_container_width=True,
+        key='delete_agent_btn',
+        disabled=st.session_state.get("current_agent_id") is None
+    )
+
+# Handle Save Agent button click
+if save_button:
+    if not AUTH_ENABLED or not st.session_state.get("authenticated", False):
+        st.error("You must be logged in to save agents")
+    else:
+        # Get agent data from session state
+        agent_name = st.session_state.get("agent_name", "")
+        system_message = st.session_state.get("system_message", "")
+        current_agent_id = st.session_state.get("current_agent_id")
+
+        # Call save_agent function
+        agent_id = save_agent(agent_name, system_message, current_agent_id)
+
+        if agent_id:
+            # Update session state with the new agent ID
+            st.session_state.current_agent_id = agent_id
+
+            # Show success message
+            if current_agent_id:
+                st.success(f"Agent '{agent_name}' updated successfully!")
+            else:
+                st.success(f"New agent '{agent_name}' created successfully!")
+                # Show balloons for new agent creation
+                st.balloons()
+
+            # Refresh the agents list
+            st.session_state.agents = load_agents()
+
+            # Force a rerun to update the UI
+            st.rerun()
+
+# Handle Delete Agent button click
+if delete_button:
+    if not AUTH_ENABLED or not st.session_state.get("authenticated", False):
+        st.error("You must be logged in to delete agents")
+    else:
+        # Get current agent details for confirmation message
+        agent_name = st.session_state.get("agent_name", "Unknown Agent")
+        agent_id = st.session_state.get("current_agent_id")
+
+        # Create a confirmation dialog using a container
+        confirm_container = st.container()
+        with confirm_container:
+            st.warning(f"Are you sure you want to delete agent '{agent_name}'? This action cannot be undone.")
+
+            # Create two columns for the confirmation buttons
+            confirm_col1, confirm_col2 = st.columns(2)
+            with confirm_col1:
+                if st.button("Yes, Delete", key="confirm_delete_btn", use_container_width=True):
+                    # Call delete_agent function
+                    if delete_agent(agent_id):
+                        # Clear the current agent from session state
+                        st.session_state.agent_name = ""
+                        st.session_state.system_message = ""
+                        st.session_state.current_agent_id = None
+
+                        # Show success message
+                        st.success(f"Agent '{agent_name}' deleted successfully!")
+
+                        # Refresh the agents list
+                        st.session_state.agents = load_agents()
+
+                        # Force a rerun to update the UI
+                        st.rerun()
+
+            with confirm_col2:
+                if st.button("Cancel", key="cancel_delete_btn", use_container_width=True):
+                    # Just rerun to clear the confirmation dialog
+                    st.rerun()
 
 # Main layout with three columns
 col1, col2, col3 = st.columns([1, 1.5, 1])

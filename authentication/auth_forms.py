@@ -1,13 +1,10 @@
 import os
 import requests
 import streamlit as st
-import json
 import logging
-from pathlib import Path
 from dotenv import load_dotenv
 from supabase import create_client, Client
 import uuid
-import streamlit_antd_components as sac
 import base64
 
 # Load environment variables
@@ -93,7 +90,7 @@ def init_auth_session():
         st.session_state.authenticated = True
         st.session_state.user = {"email": "guest@example.com", "id": "guest"}
         return
-        
+
     if "authenticated" not in st.session_state:
         logger.info("Initializing authentication session state")
         # Check for existing session token in persistent storage
@@ -106,7 +103,7 @@ def init_auth_session():
                     f"{BACKEND_URL}/auth/verify",
                     headers={"Authorization": f"Bearer {auth_token}"})
                 logger.info(f"Token verification response: {response.status_code}")
-                
+
                 if response.status_code == 200:
                     data = response.json()
                     logger.info("Token verification successful")
@@ -137,7 +134,7 @@ def init_auth_session():
             st.session_state.user = None
     else:
         logger.info(f"Authentication state already initialized: {st.session_state.authenticated}")
-    
+
     # Always regenerate auth_state if not in the middle of authentication flow
     # This ensures a fresh state for each authentication attempt
     if "auth_state" not in st.session_state or not st.query_params.get("state"):
@@ -149,23 +146,23 @@ def handle_auth_callback():
     """Handle authentication callback from Supabase"""
     # Get query parameters
     query_params = st.query_params
-    
+
     # Verify state parameter to prevent CSRF attacks
     if "state" not in query_params:
         st.query_params.clear()
         return
-        
+
     received_state = query_params["state"]
     if "auth_state" not in st.session_state or received_state != st.session_state.auth_state:
         st.query_params.clear()
         return
-    
+
     # Process the authentication response
     if "access_token" in query_params:
         try:
             # Get the user from the session
             user = supabase.auth.get_user(query_params["access_token"])
-            
+
             # Set the session state and store authentication persistently
             st.session_state.authenticated = True
             st.session_state.user = user
@@ -174,18 +171,18 @@ def handle_auth_callback():
 
             # Store the token in a persistent file
             save_session_data(query_params["access_token"])
-            
+
             # Clear the state and URL parameters
             if "auth_state" in st.session_state:
                 del st.session_state.auth_state
             st.query_params.clear()
-            
+
             # Show success message
             st.success("Successfully logged in!")
-            
+
         except Exception as e:
             st.error(f"Error authenticating: {str(e)}")
-    
+
     # Handle authentication errors
     elif "error" in query_params and "error_description" in query_params:
         st.error(f"Authentication error: {query_params['error_description']}")
@@ -197,23 +194,28 @@ def auth_forms():
     """Display authentication forms"""
     # Create a compact container for the popover
     with st.container():
-        
-        
+
+
         # Create tabs for login and signup
         tab1, tab2 = st.tabs(["Login", "Sign Up"])
-        
+
         with tab1:
             st.subheader("Login")
-            
+
             # Email login form
             with st.form("login_form"):
                 email = st.text_input("Email")
                 password = st.text_input("Password", type="password")
+                st.caption("Password must be at least 6 characters long")
                 submit = st.form_submit_button("Login", use_container_width=True)
-                
+
                 if submit:
                     if not email or not password:
                         st.error("Please enter both email and password.")
+                        return
+
+                    if len(password) < 6:
+                        st.error("Password must be at least 6 characters long.")
                         return
 
                     try:
@@ -222,7 +224,7 @@ def auth_forms():
                             f"{BACKEND_URL}/auth/login",
                             json={"email": email, "password": password}
                         )
-                        
+
                         if response.status_code == 200:
                             data = response.json()
                             # Set session state and store session data
@@ -235,54 +237,75 @@ def auth_forms():
 
                             # Store the token in persistent storage
                             save_session_data(data["access_token"])
-                        
+
                             # Show success message and reload
                             st.success("Login successful!")
                             st.rerun()
-                        
+
                         else:
-                            error_message = response.json().get("detail", "Unknown error")
-                            st.error(f"Login failed: {error_message}")
-                        
+                            try:
+                                error_data = response.json()
+                                error_message = error_data.get("detail", "Unknown error")
+                            except:
+                                error_message = response.text or "Unknown error"
+
+                            # Check for common error patterns
+                            if "invalid" in error_message.lower() or "credentials" in error_message.lower() or "user not found" in error_message.lower():
+                                st.error("Invalid email or password. Please check your credentials and try again.")
+                                # Add suggestion to sign up if they don't have an account
+                                st.info("Don't have an account yet? Please sign up first using the 'Sign Up' tab.")
+                            elif "not confirmed" in error_message.lower() or "verify" in error_message.lower():
+                                st.error("Please verify your email address before logging in.")
+                            else:
+                                # Generic error without exposing backend details
+                                st.error("Login failed. Please try again or contact support if the problem persists.")
+                                # Log the actual error for debugging (not shown to user)
+                                logger.error(f"Login error: {error_message}")
+
                     except Exception as e:
                         error_message = str(e).lower()
-                        if "invalid login credentials" in error_message:
+                        if "invalid login credentials" in error_message or "user not found" in error_message:
                             st.error("Invalid email or password. Please check your credentials and try again.")
-                        elif "email not confirmed" in error_message:
+                            # Add suggestion to sign up if they don't have an account
+                            st.info("Don't have an account yet? Please sign up first using the 'Sign Up' tab.")
+                        elif "email not confirmed" in error_message or "verify" in error_message:
                             st.error("Please verify your email address before logging in.")
-                        elif "too many requests" in error_message:
+                        elif "too many requests" in error_message or "rate limit" in error_message:
                             st.error("Too many login attempts. Please try again later.")
+                        elif "connection" in error_message or "timeout" in error_message:
+                            st.error("Unable to connect to the authentication service. Please try again later.")
                         else:
-                            st.error(f"Login failed: {str(e)}")
-        
+                            # Generic error without exposing backend details
+                            st.error("Login failed. Please try again or contact support if the problem persists.")
+                            # Log the actual error for debugging (not shown to user)
+                            logger.error(f"Login exception: {str(e)}")
+
         with tab2:
                 st.subheader("Sign Up")
-                
+
                 # Sign up form
                 with st.form("signup_form"):
                     email = st.text_input("Email")
                     password = st.text_input("Password", type="password")
+                    st.caption("Password must be at least 6 characters long")
                     confirm_password = st.text_input("Confirm Password", type="password")
                     submit = st.form_submit_button("Sign Up", use_container_width=True)
-                    
+
                     if submit:
                         if not email or not password:
                             st.error("Please enter both email and password.")
+                        elif len(password) < 6:
+                            st.error("Password must be at least 6 characters long.")
                         elif password != confirm_password:
                             st.error("Passwords do not match!")
                         else:
                             try:
-                                st.info(f"Attempting to sign up with backend at {BACKEND_URL}/auth/signup")
-                                
                                 # Sign up using FastAPI backend
                                 response = requests.post(
                                     f"{BACKEND_URL}/auth/signup",
                                     json={"email": email, "password": password}
                                 )
-                                
-                                # Debug response
-                                st.text(f"Response status: {response.status_code}")
-                                
+
                                 if response.status_code == 200:
                                     data = response.json()
                                     st.success("Sign up successful! You can now login with your credentials.")
@@ -294,15 +317,24 @@ def auth_forms():
                                         error_message = error_data.get("detail", "Unknown error")
                                     except:
                                         error_message = response.text or "Unknown error"
-                                        
-                                    st.error(f"Sign up failed: {error_message}")
-                                    
-                                    # If the error mentions "email already registered" suggest login
-                                    if "email already registered" in error_message.lower() or "user already registered" in error_message.lower():
-                                        st.info("It looks like you already have an account. Try logging in instead.")
-                                    
+
+                                    # Check for common error patterns
+                                    if any(phrase in error_message.lower() for phrase in ["already registered", "already exists", "user already", "email already"]):
+                                        st.error("It looks like you already have an account. Try logging in instead.")
+                                    elif "password" in error_message.lower():
+                                        st.error("Password error: Please choose a stronger password (at least 6 characters).")
+                                    elif "email" in error_message.lower():
+                                        st.error("Email error: Please enter a valid email address.")
+                                    else:
+                                        # Generic error without exposing backend details
+                                        st.error("Sign up failed. Please try again or contact support if the problem persists.")
+                                        # Log the actual error for debugging (not shown to user)
+                                        logger.error(f"Sign up error: {error_message}")
+
                             except Exception as e:
-                                st.error(f"Request error: {str(e)}")
+                                st.error("Unable to connect to the authentication service. Please try again later.")
+                                # Log the actual error for debugging (not shown to user)
+                                logger.error(f"Sign up request error: {str(e)}")
 
 def logout():
     """Log out the current user"""
@@ -310,30 +342,35 @@ def logout():
         try:
             # Remove token from session state and clear persistent data
             if "_auth_token_" in st.session_state:
-                # Call logout endpoint
-                response = requests.post(
-                    f"{BACKEND_URL}/auth/logout",
-                    headers={"Authorization": f"Bearer {st.session_state['_auth_token_']}"}
-                )
-                
+                try:
+                    # Call logout endpoint
+                    requests.post(
+                        f"{BACKEND_URL}/auth/logout",
+                        headers={"Authorization": f"Bearer {st.session_state['_auth_token_']}"},
+                        timeout=5  # Add timeout to prevent hanging
+                    )
+                except Exception as e:
+                    # Just log the error but continue with local logout
+                    logger.warning(f"Error calling logout endpoint: {str(e)}")
+
                 # Clear session state
                 del st.session_state["_auth_token_"]
-            
+
             # Clear the persistent session data
             clear_session_data()
-            
+
             # Reset session state
             st.session_state.authenticated = False
             st.session_state.user = None
-            
+
             # Clear all authentication-related session state
             for key in list(st.session_state.keys()):
                 if key.startswith("_auth_"):
                     del st.session_state[key]
-            
+
             st.success("Successfully logged out!")
             st.rerun()
-            
+
         except Exception as e:
             st.error(f"Error logging out: {str(e)}")
     else:
