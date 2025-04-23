@@ -212,6 +212,8 @@ with st.sidebar:
 	    sac.MenuItem('Playground', icon='mic-fill', href='/flameaudio'),
         sac.MenuItem('Documents', icon='file-text-fill', href='/documents'),
         sac.MenuItem('Chat', icon='chat-fill', href='/chat'),
+        sac.MenuItem('MCP', icon='gear-fill', href='/flame_mcp'),
+        sac.MenuItem('MCP Chat', icon='chat-dots-fill', href='/mcp_chat'),
     ], open_all=True)
 
 

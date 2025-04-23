@@ -20,7 +20,17 @@ from authentication.auth import get_current_user
 from embedding import generate_embedding
 from database.chat_routes import router as chat_router
 from database.vector_store_routes import router as vector_store_router
+from database.mcp_routes import router as mcp_router
 from database.pg_connector import get_pg_db
+from deep_remove_key import deep_remove_key
+
+# MCP integration has been moved to a separate service
+# See the mcp_service directory for details
+#
+# To use the MCP service:
+# 1. Ensure this main backend is running on port 8000
+# 2. Start the MCP service using: mcp_service\run_mcp_service.bat
+# 3. The MCP service will be available at http://localhost:8001
 
 # Initialize security scheme
 security = HTTPBearer()
@@ -57,9 +67,147 @@ supabase: Client = create_client(supabase_url, supabase_key)
 
 # Include routers
 app.include_router(auth_router, prefix="/api")
+# Register database routes at /api, so /agents is available at /api/agents for MCP compatibility
 app.include_router(db_router, prefix="/api")
 app.include_router(chat_router, prefix="/api")
 app.include_router(vector_store_router, prefix="/api")
+app.include_router(mcp_router, prefix="/api")
+
+# MCP routes have been moved to the separate MCP service
+# See the mcp_service directory for details
+# The MCP service provides the following tools:
+# - transcribe_audio: Transcribe audio from a URL
+# - search_documents: Search documents using vector search
+# - get_document_by_id: Get a document by its ID
+# - get_models: Get available audio models
+# - get_languages: Get supported languages for transcription
+
+from fastapi import APIRouter
+import httpx
+
+@app.post("/langgraph/tools/call")
+async def langgraph_tools_call(request: Request):
+    """
+    Proxy endpoint for LangGraph tool invocation. Accepts JSON with 'tool_name' and 'args',
+    forwards to MCP service, and returns the result.
+    """
+    try:
+        payload = await request.json()
+        tool_name = payload.get("tool_name")
+        args = payload.get("args", {})
+        if not tool_name:
+            raise HTTPException(status_code=400, detail="Missing 'tool_name' in request body")
+        async with httpx.AsyncClient() as client:
+            mcp_url = "http://localhost:8001/tools/call"
+            mcp_payload = {"tool_name": tool_name, "args": args}
+            mcp_response = await client.post(mcp_url, json=mcp_payload)
+            if mcp_response.status_code == 200:
+                return JSONResponse(content=mcp_response.json())
+            else:
+                return JSONResponse(status_code=mcp_response.status_code, content={"error": mcp_response.text})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+# ---
+
+import logging
+for route in app.routes:
+    logging.info(f"Registered route: {route.path} [{route.methods}]")
+
+# Add /api/chat_models endpoint for MCP tool compatibility
+from database.chat_routes import get_chat_models, validate_chat_model
+from fastapi import Depends, Request
+from authentication.auth import get_current_user
+from database.routes import get_user_agents
+from langchain_groq import ChatGroq
+from typing import List, Dict
+
+@app.get("/api/chat_models")
+async def api_chat_models(current_user = Depends(get_current_user)):
+    return await get_chat_models(current_user)
+
+# Alias: /api/agents forwards to the same logic as /api/db/agents for MCP compatibility
+@app.get("/api/agents")
+async def api_agents(current_user = Depends(get_current_user)):
+    return await get_user_agents(current_user)
+
+# Add a chat completions endpoint for OpenAI-compatible API
+@app.post("/api/chat/completions")
+async def chat_completions(request: Request, current_user = Depends(get_current_user)):
+    """Process chat completions requests in OpenAI-compatible format"""
+    try:
+        # Parse the request body
+        body = await request.json()
+        model = body.get("model", "llama3-70b-8192")
+        messages = body.get("messages", [])
+        temperature = float(body.get("temperature", 0.7))
+        max_tokens = int(body.get("max_tokens", 1024))
+        top_p = float(body.get("top_p", 0.9))
+
+        # Clean parameters: remove 'proxies' if present anywhere
+        cleaned_body = deep_remove_key(body, "proxies")
+        logging.info(f"Cleaned chat completion parameters: {cleaned_body}")
+
+        # Validate model name dynamically using chat_routes utility
+        await validate_chat_model(cleaned_body.get("model", model))
+
+        # Get Groq API key
+        groq_api_key = os.getenv("GROQ_API_KEY")
+        if not groq_api_key:
+            raise HTTPException(
+                status_code=400,
+                detail="GROQ_API_KEY not found in environment variables"
+            )
+
+        # Create Groq client
+        llm = ChatGroq(
+            groq_api_key=groq_api_key,
+            model_name=cleaned_body.get("model", model),
+            temperature=float(cleaned_body.get("temperature", temperature)),
+            max_tokens=int(cleaned_body.get("max_tokens", max_tokens)),
+            top_p=float(cleaned_body.get("top_p", top_p))
+        )
+
+        # Format messages for Groq
+        formatted_messages = []
+        for msg in cleaned_body.get("messages", []):
+            if msg.get("role") and msg.get("content"):
+                if msg["role"] == "system":
+                    from langchain_core.messages import SystemMessage
+                    formatted_messages.append(SystemMessage(content=msg["content"]))
+                elif msg["role"] == "user":
+                    from langchain_core.messages import HumanMessage
+                    formatted_messages.append(HumanMessage(content=msg["content"]))
+                elif msg["role"] == "assistant":
+                    from langchain_core.messages import AIMessage
+                    formatted_messages.append(AIMessage(content=msg["content"]))
+
+        # Call the model
+        response = llm.invoke(formatted_messages)
+
+        # Format the response in OpenAI-compatible format
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": response.content
+                    },
+                    "index": 0,
+                    "finish_reason": "stop"
+                }
+            ],
+            "model": model,
+            "object": "chat.completion"
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error processing chat completions request: {str(e)}"
+        )
 
 # Initialize database connections
 @app.on_event("startup")
@@ -68,7 +216,7 @@ async def startup_db_client():
         # Initialize PostgreSQL connection
         pg_db = get_pg_db()
         logging.info("PostgreSQL database connection initialized")
-        
+
         # Initialize Vector Store connection
         vector_store = get_vector_store()
         logging.info("Vector Store connection initialized")
@@ -141,7 +289,7 @@ async def validate_audio_file(file: UploadFile):
         'audio/x-wav', 'audio/flac', 'audio/ogg', 'audio/webm',
         'video/mp4', 'video/mpeg', 'video/webm'
     }
-    
+
     # Get content type from the file
     content_type = file.content_type
     if not content_type:
@@ -159,28 +307,28 @@ async def validate_audio_file(file: UploadFile):
         }
         ext = Path(file.filename).suffix.lower()
         content_type = ext_to_type.get(ext)
-    
+
     if not content_type or content_type not in allowed_types:
         raise HTTPException(
             status_code=400,
             detail=f"Unsupported file type: {content_type}. Must be one of: {', '.join(allowed_types)}"
         )
-    
+
     # Save file temporarily to check size
     temp_file = tempfile.NamedTemporaryFile(delete=False)
     try:
         content = await file.read()
         await file.seek(0)  # Reset file pointer
-        
+
         # Check file size (25MB limit)
         if len(content) > 25 * 1024 * 1024:
             raise HTTPException(
                 status_code=400,
                 detail="File size too large. Maximum size is 25MB."
             )
-            
+
         return True
-        
+
     finally:
         temp_file.close()
         os.unlink(temp_file.name)
@@ -222,15 +370,15 @@ async def transcribe_audio(
     Transcribe audio using the Groq API.
     """
     logger = logging.getLogger(__name__)
-    
+
     # Configure logging
     logging.basicConfig(level=logging.DEBUG)
-    
+
     # Log request details
     logger.info(f"Received transcription request for file: {file.filename}")
     logger.info(f"Model: {model}, Task: {task}, Language: {language}, Response format: {response_format}")
     logger.info(f"Chunk length: {chunk_length}, Overlap: {overlap}, Temperature: {temperature}")
-    
+
     try:
         # Create a temporary file to store the uploaded audio
         with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix) as temp_file:
@@ -238,7 +386,7 @@ async def transcribe_audio(
             content = await file.read()
             temp_file.write(content)
             temp_path = temp_file.name
-            
+
             logger.info(f"Saved uploaded file to temporary path: {temp_path}")
             logger.info(f"File size: {len(content) / 1024:.2f} KB")
 
@@ -316,20 +464,20 @@ async def translate_audio(
             status_code=401,
             detail=f"Authentication failed: {str(e)}"
         )
-        
+
     """
     Translate audio to English text using the Groq API.
     """
     logger = logging.getLogger(__name__)
-    
+
     # Configure logging
     logging.basicConfig(level=logging.DEBUG)
-    
+
     # Log request details
     logger.info(f"Received translation request for file: {file.filename}")
     logger.info(f"Model: {model}, Response format: {response_format}")
     logger.info(f"Chunk length: {chunk_length}, Overlap: {overlap}, Temperature: {temperature}")
-    
+
     try:
         # Create a temporary file to store the uploaded audio
         with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix) as temp_file:
@@ -337,7 +485,7 @@ async def translate_audio(
             content = await file.read()
             temp_file.write(content)
             temp_path = temp_file.name
-            
+
             logger.info(f"Saved uploaded file to temporary path: {temp_path}")
             logger.info(f"File size: {len(content) / 1024:.2f} KB")
 
@@ -404,7 +552,7 @@ async def get_models():
             )
             response.raise_for_status()
             models_data = response.json()
-            
+
             # Filter for Whisper models (speech-to-text)
             speech_models = [
                 {
@@ -415,7 +563,7 @@ async def get_models():
                 for model in models_data["data"]
                 if "whisper" in model["id"].lower()
             ]
-            
+
             return speech_models
     except httpx.HTTPError as e:
         raise HTTPException(status_code=e.response.status_code if hasattr(e, 'response') else 500,
@@ -442,7 +590,7 @@ async def embed_text(text_data: dict, current_user = Depends(get_current_user)):
     """Generate an embedding vector for the given text"""
     if "text" not in text_data:
         raise HTTPException(status_code=400, detail="Text field is required")
-        
+
     try:
         embedding = generate_embedding(text_data["text"])
         return {

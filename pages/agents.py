@@ -37,6 +37,8 @@ with st.sidebar:
         sac.MenuItem('Agents', icon='person-fill'),
         sac.MenuItem('Documents', icon='file-text-fill', href='/documents'),
         sac.MenuItem('Chat', icon='chat-fill', href='/chat'),
+        sac.MenuItem('MCP', icon='gear-fill', href='/flame_mcp'),
+        sac.MenuItem('MCP Chat', icon='chat-dots-fill', href='/mcp_chat'),
     ], open_all=True)
 
 # Show authentication forms if not authenticated
@@ -104,13 +106,13 @@ def create_new_agent():
 def view_agent(agent_id):
     # Set the agent ID in session state so flameaudio.py can load it
     st.session_state.current_agent_id = agent_id
-    
+
     # Get agent details to set in session state
     agent_data = get_agent_details(agent_id)
     if agent_data:
         st.session_state.agent_name = agent_data.get("name", "")
         st.session_state.system_message = agent_data.get("system_message", "")
-        
+
         # Switch to the playground page
         st.switch_page("pages/flameaudio.py")
 
@@ -118,7 +120,7 @@ def view_agent(agent_id):
 def chat_with_agent(agent_id):
     # Set the chat agent in session state so chat.py can load it
     st.session_state.chat_agent = agent_id
-    
+
     # Switch to the chat page
     st.switch_page("pages/chat.py")
 
@@ -129,19 +131,19 @@ else:
     # Create a button to create a new agent
     if st.button("Create New Agent", type="primary", key="create_agent_btn"):
         create_new_agent()
-    
+
     # Load agents
     agents = load_agents()
-    
+
     if not agents:
         st.info("You don't have any agents yet. Click 'Create New Agent' to get started.")
     else:
         st.markdown("### Your Agents")
-        
+
         # Create a grid layout for agent cards
         # Calculate number of columns (3 for desktop, fewer for smaller screens)
         cols = st.columns(3)
-        
+
         # Display each agent as a card
         for i, agent in enumerate(agents):
             col_idx = i % 3
@@ -150,16 +152,16 @@ else:
                 with st.container(border=True):
                     # Agent name as title
                     st.markdown(f"### {agent.get('name', 'Unnamed Agent')}")
-                    
+
                     # Show a preview of the system message
                     system_message = agent.get("system_message", "")
                     preview = system_message[:100] + "..." if len(system_message) > 100 else system_message
                     st.markdown(f"**System Message:** {preview}")
-                    
+
                     # Show agent metadata if available
                     if "created_at" in agent:
                         st.caption(f"Created: {agent.get('created_at', '')}")
-                    
+
                     # Add buttons for actions
                     col1, col2 = st.columns(2)
                     with col1:
@@ -168,20 +170,20 @@ else:
                     with col2:
                         if st.button("Chat", key=f"chat_{agent.get('id')}", use_container_width=True):
                             chat_with_agent(agent.get("id"))
-        
+
         # Add some spacing at the bottom
-    with st.sidebar:    
+    with st.sidebar:
         st.markdown("---")
         st.markdown("""
         ### About Agents
-        
+
         Agents are AI assistants that can be customized with specific personalities and knowledge.
         Each agent can be used for:
-        
+
         - **Transcription & Translation**: Process audio files with agent-specific context
         - **Document Organization**: Group related documents under the same agent
         - **Specialized Chat**: Chat with the agent about documents it has access to
-        
+
         Create different agents for different projects or topics to keep your work organized.
         """)
 

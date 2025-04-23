@@ -1,0 +1,15 @@
+beautifulsoup4>=4.12.3
+html2text>=2024.2.26
+mcp[cli]>=1.2.0
+requests>=2.32.3
+streamlit
+langchain>=0.1.0
+langchain-groq>=0.1.0
+langchain-postgres>=0.0.13
+langchain-community>=0.0.16
+langchain-core>=0.1.0
+langgraph>=0.0.18
+sentence-transformers>=2.2.2
+numpy>=1.26.0
+uvicorn
+starlette

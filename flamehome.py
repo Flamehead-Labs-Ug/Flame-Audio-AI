@@ -39,6 +39,8 @@ with st.sidebar:
         sac.MenuItem('Agents', icon='person-fill', href='/agents'),
         sac.MenuItem('Documents', icon='file-text-fill', href='/documents'),
         sac.MenuItem('Chat', icon='chat-fill', href='/chat'),
+        sac.MenuItem('MCP', icon='gear-fill', href='/flame_mcp'),
+        sac.MenuItem('MCP Chat', icon='chat-dots-fill', href='/mcp_chat'),
         sac.MenuItem(type='divider'),
         sac.MenuItem('Connect', type='group', children=[
             sac.MenuItem('About FlameheadLabs', icon='info-circle', href='http://flameheadlabs.tech/'),
@@ -58,6 +60,10 @@ with st.sidebar:
         st.switch_page('pages/02_Save_Document.py')
     elif menu_selection == 'chat':
         st.switch_page('pages/chat.py')
+    elif menu_selection == 'flame_mcp':
+        st.switch_page('pages/flame_mcp.py')
+    elif menu_selection == 'mcp_chat':
+        st.switch_page('pages/mcp_chat.py')
 
 # Show authentication forms if not authenticated
 if AUTH_ENABLED and not st.session_state.get("authenticated", False):

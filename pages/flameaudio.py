@@ -367,6 +367,8 @@ with st.sidebar:
         sac.MenuItem('Agents', icon='person-fill', href='/agents'),
         sac.MenuItem('Documents', icon='file-text-fill', href='/documents'),
         sac.MenuItem('Chat', icon='chat-fill', href='/chat'),
+        sac.MenuItem('MCP', icon='gear-fill', href='/flame_mcp'),
+        sac.MenuItem('MCP Chat', icon='chat-dots-fill', href='/mcp_chat'),
     ], open_all=True)
 
 # Show authentication status based on AUTH_ENABLED setting
