@@ -1420,8 +1420,71 @@ with chat_container:
                 if "metadata" in message and "source_documents" in message["metadata"]:
                     with st.expander("📄 Sources"):
                         for i, doc in enumerate(message["metadata"]["source_documents"]):
-                            st.markdown(f"**Source {i+1}:**")
-                            st.markdown(doc["content"])
+                            # Get document metadata - handle different metadata structures
+                            metadata = doc.get("metadata", {})
+
+                            # Debug the metadata structure
+                            print(f"Document metadata structure: {metadata}")
+
+                            # Try to get metadata from different possible locations
+                            if isinstance(metadata, dict):
+                                # Direct metadata
+                                doc_name = metadata.get("document_name", "Unknown Document")
+                                chunk_index = metadata.get("chunk_index", 0)
+                                start_time = metadata.get("start_time")
+                                end_time = metadata.get("end_time")
+                                score = metadata.get("similarity", 0)
+
+                            # If metadata fields are not in the top level, check if they're in a nested metadata field
+                            if not start_time and "metadata" in metadata and isinstance(metadata["metadata"], dict):
+                                nested_metadata = metadata["metadata"]
+                                if not doc_name or doc_name == "Unknown Document":
+                                    doc_name = nested_metadata.get("document_name", "Unknown Document")
+                                if chunk_index == 0:
+                                    chunk_index = nested_metadata.get("chunk_index", 0)
+                                start_time = nested_metadata.get("start_time")
+                                end_time = nested_metadata.get("end_time")
+                                if score == 0:
+                                    score = nested_metadata.get("similarity", 0)
+
+                            # If we still don't have values, check if they're directly in the doc
+                            if not start_time:
+                                start_time = doc.get("start_time")
+                                end_time = doc.get("end_time")
+                                if not doc_name or doc_name == "Unknown Document":
+                                    doc_name = doc.get("document_name", "Unknown Document")
+                                if chunk_index == 0:
+                                    chunk_index = doc.get("chunk_index", 0)
+                                if score == 0:
+                                    score = doc.get("similarity", 0)
+
+                            # Format values for display
+                            if start_time is not None:
+                                start_time = f"{float(start_time):.2f}s"
+                            else:
+                                start_time = "N/A"
+
+                            if end_time is not None:
+                                end_time = f"{float(end_time):.2f}s"
+                            else:
+                                end_time = "N/A"
+
+                            # Display source header with document name
+                            st.markdown(f"**Source {i+1}: {doc_name}**")
+
+                            # Display metadata in columns
+                            col1, col2, col3, col4 = st.columns(4)
+                            with col1:
+                                st.caption(f"Chunk: {chunk_index}")
+                            with col2:
+                                st.caption(f"Start Time: {start_time}")
+                            with col3:
+                                st.caption(f"End Time: {end_time}")
+                            with col4:
+                                st.caption(f"Score: {score:.3f}")
+
+                            # Display content in a code block for better readability
+                            st.code(doc.get("content", "No content available"))
                             st.markdown("---")
 
                 # Display tool calls if present
