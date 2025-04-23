@@ -988,8 +988,28 @@ def send_langgraph_message(url: str, message: str, tools: List[str] = None, docu
 
         # Process the response
         if response:
-            # Debug the response structure
+            # Debug the response structure in detail
             print(f"Response from LangGraph: {response}")
+            print(f"Response type: {type(response)}")
+
+            # Print the result field structure
+            result = response.get("result", {})
+            print(f"Result field: {result}")
+            print(f"Result type: {type(result)}")
+
+            # If result is a dict, print its keys
+            if isinstance(result, dict):
+                print(f"Result keys: {result.keys()}")
+
+                # Check for source documents
+                if "source_documents" in result:
+                    print(f"Source documents found in result: {len(result['source_documents'])}")
+                elif "document_sources" in result:
+                    print(f"Document sources found in result: {len(result['document_sources'])}")
+                elif "metadata" in result and "source_documents" in result["metadata"]:
+                    print(f"Source documents found in result.metadata: {len(result['metadata']['source_documents'])}")
+                else:
+                    print("No source documents found in result")
 
             # Extract the response content from the result field
             result = response.get("result", {})
@@ -1028,10 +1048,30 @@ def send_langgraph_message(url: str, message: str, tools: List[str] = None, docu
                 # Check for source documents in the result
                 if "source_documents" in result:
                     assistant_message["metadata"]["source_documents"] = result["source_documents"]
+                    print(f"Added {len(result['source_documents'])} source documents from result.source_documents")
                 elif "document_sources" in result:
                     assistant_message["metadata"]["source_documents"] = result["document_sources"]
+                    print(f"Added {len(result['document_sources'])} source documents from result.document_sources")
                 elif "metadata" in result and "source_documents" in result["metadata"]:
                     assistant_message["metadata"]["source_documents"] = result["metadata"]["source_documents"]
+                    print(f"Added {len(result['metadata']['source_documents'])} source documents from result.metadata.source_documents")
+                # Check for messages field that might contain metadata
+                elif "messages" in result:
+                    messages = result["messages"]
+                    if isinstance(messages, list) and len(messages) > 0:
+                        for msg in messages:
+                            if isinstance(msg, dict) and msg.get("role") == "assistant" and "metadata" in msg:
+                                msg_metadata = msg["metadata"]
+                                if isinstance(msg_metadata, dict) and "source_documents" in msg_metadata:
+                                    assistant_message["metadata"]["source_documents"] = msg_metadata["source_documents"]
+                                    print(f"Added {len(msg_metadata['source_documents'])} source documents from result.messages[].metadata")
+                                    break
+                # Check for response field that might contain metadata
+                elif "response" in result and isinstance(result["response"], dict):
+                    response_obj = result["response"]
+                    if "metadata" in response_obj and "source_documents" in response_obj["metadata"]:
+                        assistant_message["metadata"]["source_documents"] = response_obj["metadata"]["source_documents"]
+                        print(f"Added {len(response_obj['metadata']['source_documents'])} source documents from result.response.metadata")
 
             # Add tool calls if any
             if "tool_calls" in response and response["tool_calls"]:
