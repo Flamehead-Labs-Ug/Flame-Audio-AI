@@ -13,7 +13,7 @@ import requests
 import json
 import os
 import sys
-import uuid
+# import uuid - not used
 from typing import Dict, List, Any
 from datetime import datetime
 
@@ -27,7 +27,7 @@ import os
 from utils.langgraph_client import (
     get_langgraph_client,
     create_session,
-    send_message
+    chat_with_agent_rag
 )
 
 # Define constants that were previously imported from flameaudio.py
@@ -378,11 +378,17 @@ if AUTH_ENABLED and st.session_state.get("authenticated", False):
 # Agent Settings Container
 if st.session_state.get("mcp_activated", False):
     st.sidebar.markdown("## Agent Settings")
-    agent_settings_container = st.sidebar.container(border=True)
-
+    agent_settings_container = st.sidebar.container(height=350, border=True)
     with agent_settings_container:
-        if not AUTH_ENABLED or st.session_state.get("authenticated", False):
-            # Agent Selection
+        agent_settings_tab = st.radio(
+            label="Agent Settings Section",
+            options=["Agent Selection", "Model Config", "MCP Tools"],
+            index=0,
+            horizontal=True,
+            key="agent_settings_tab_radio"
+        )
+
+        if agent_settings_tab == "Agent Selection":
             st.subheader("Agent Selection")
 
             # Function to load agents - using only MCP service
@@ -467,7 +473,7 @@ if st.session_state.get("mcp_activated", False):
                     st.session_state.mcp_agents = load_agents()
 
             # Display agent selection dropdown
-            agent_options = [{"label": "-- Select an Agent --", "value": ""}]
+        agent_options = [{"label": "-- Select an Agent --", "value": ""}]
         if "mcp_agents" in st.session_state and st.session_state.mcp_agents:
             for agent in st.session_state.mcp_agents:
                 agent_options.append({
@@ -499,128 +505,13 @@ if st.session_state.get("mcp_activated", False):
             if "mcp_documents" in st.session_state:
                 del st.session_state.mcp_documents
 
-        # Model Selection
-        st.subheader("Model Selection")
-
-        # Function to get chat models using MCP client
-        def get_models():
-            try:
-                # Get authentication token
-                auth_token = st.session_state.get("_auth_token_")
-                if not auth_token:
-                    st.error("Authentication token not found. Please log in again.")
-                    return []
-
-                # Debug info
-                st.info(f"Loading chat models from MCP service at {st.session_state.mcp_url}")
-                print(f"Loading chat models from MCP service at {st.session_state.mcp_url}")
-
-                # Create LangGraph client
-                client = get_langgraph_client(st.session_state.mcp_url, auth_token)
-
-                # If we have a session ID, use it
-                if "mcp_session_id" in st.session_state:
-                    client.set_session_id(st.session_state.mcp_session_id)
-                    print(f"Using existing session ID for models: {st.session_state.mcp_session_id}")
-
-                # Call the get_chat_models tool
-                print("Calling get_chat_models tool...")
-                result = client.call_tool_sync("get_chat_models", {"token": auth_token})
-                # Handle both list and dict responses
-                if result:
-                    if isinstance(result, list):
-                        models = result
-                    else:
-                        models = result.get("models", [])
-                else:
-                    models = []
-                print(f"Received {len(models) if models else 0} models from LangGraph service")
-
-                # If we got a new session ID from the client, save it
-                st.session_state.mcp_session_id = client.session_id
-
-                # Try direct backend call as fallback if no models returned
-                if not models:
-                    print("No models returned from MCP service, trying direct backend call...")
-                    response = requests.get(
-                        f"{BACKEND_URL}/chat_models",
-                        headers={
-                            "Authorization": f"Bearer {auth_token}"
-                        },
-                        timeout=10
-                    )
-                    if response.status_code == 200:
-                        direct_models = response.json()
-                        print(f"Received {len(direct_models)} models from direct backend call")
-                        return direct_models
-                    else:
-                        print(f"Direct backend call failed: {response.status_code} - {response.text}")
-
-                return models or []
-            except Exception as e:
-                error_msg = f"Error loading chat models: {str(e)}"
-                st.error(error_msg)
-                print(error_msg)
-                import traceback
-                print(traceback.format_exc())
-                return []
-
-        # Fetch models
-        if "mcp_chat_models" not in st.session_state or st.button("🔄 Refresh Models", key="refresh_mcp_models"):
-            with st.spinner("Loading chat models..."):
-                st.session_state.mcp_chat_models = get_models()
-
-        # Display model selection dropdown
-        model_options = []  # No default options, only use what comes from MCP
-        model_descriptions = {}
-
-        if "mcp_chat_models" in st.session_state and st.session_state.mcp_chat_models:
-            for model in st.session_state.mcp_chat_models:
-                model_id = model.get("id")
-                if model_id:  # Only add if we have a valid ID
-                    model_options.append(model_id)
-                    model_descriptions[model_id] = model.get("description", "No description available")
-
-        # Set default model if not already set
-        if "mcp_selected_model" not in st.session_state:
-            st.session_state.mcp_selected_model = model_options[0] if model_options else "default"
-
-        # Model selection
-        if model_options:
-            # Determine the index to select
-            if st.session_state.mcp_selected_model in model_options:
-                index = model_options.index(st.session_state.mcp_selected_model)
-            else:
-                index = 0
-                # Reset selected model if it's not in the options
-                st.session_state.mcp_selected_model = model_options[0]
-
-            # Display the model selection dropdown
-            selected_model = st.selectbox(
-                "Select Model",
-                options=model_options,
-                index=index,
-                key="mcp_model_selector"
-            )
-
-            # Update selected model
-            if selected_model != st.session_state.mcp_selected_model:
-                st.session_state.mcp_selected_model = selected_model
-
-            # Show model description if available
-            if selected_model in model_descriptions and model_descriptions[selected_model]:
-                st.info(model_descriptions[selected_model])
-        else:
-            st.warning("No models available from MCP service. Please check the MCP service configuration.")
-            st.session_state.mcp_selected_model = ""
-
-        # Document Selection
-        st.subheader("Document Selection")
-
-        # Only show document selection if an agent is selected
-        if st.session_state.mcp_selected_agent:
-            # Function to get documents for the selected agent using MCP client
-            def get_documents(agent_id):
+        # Model Config Section
+        if agent_settings_tab == "Model Config":
+            st.subheader("Model Config")
+            # Model Selection
+            st.subheader("Model Selection")
+            # Function to get chat models using MCP client
+            def get_models():
                 try:
                     # Get authentication token
                     auth_token = st.session_state.get("_auth_token_")
@@ -629,8 +520,8 @@ if st.session_state.get("mcp_activated", False):
                         return []
 
                     # Debug info
-                    st.info(f"Loading documents for agent {agent_id} from MCP service at {st.session_state.mcp_url}")
-                    print(f"Loading documents for agent {agent_id} from MCP service at {st.session_state.mcp_url}")
+                    st.info(f"Loading chat models from MCP service at {st.session_state.mcp_url}")
+                    print(f"Loading chat models from MCP service at {st.session_state.mcp_url}")
 
                     # Create LangGraph client
                     client = get_langgraph_client(st.session_state.mcp_url, auth_token)
@@ -638,110 +529,307 @@ if st.session_state.get("mcp_activated", False):
                     # If we have a session ID, use it
                     if "mcp_session_id" in st.session_state:
                         client.set_session_id(st.session_state.mcp_session_id)
-                        print(f"Using existing session ID for documents: {st.session_state.mcp_session_id}")
+                        print(f"Using existing session ID for models: {st.session_state.mcp_session_id}")
 
-                    # Call the list_documents tool
-                    print("Calling list_documents tool...")
-                    result = client.call_tool_sync("get_user_documents", {"token": auth_token, "agent_id": agent_id})
+                    # Call the get_chat_models tool
+                    print("Calling get_chat_models tool...")
+                    result = client.call_tool_sync("get_chat_models", {"token": auth_token})
                     # Handle both list and dict responses
                     if result:
                         if isinstance(result, list):
-                            documents = result
+                            models = result
                         else:
-                            documents = result.get("documents", [])
+                            models = result.get("models", [])
                     else:
-                        documents = []
-                    print(f"Received {len(documents) if documents else 0} documents from LangGraph service")
+                        models = []
+                    print(f"Received {len(models) if models else 0} models from LangGraph service")
 
                     # If we got a new session ID from the client, save it
                     st.session_state.mcp_session_id = client.session_id
 
-                    # Try direct backend call as fallback if no documents returned
-                    if not documents:
-                        print("No documents returned from MCP service, trying direct backend call...")
-                        params = {}
-                        if agent_id and agent_id != "all":
-                            params["agent_id"] = agent_id
-
+                    # Try direct backend call as fallback if no models returned
+                    if not models:
+                        print("No models returned from MCP service, trying direct backend call...")
                         response = requests.get(
-                            f"{BACKEND_URL}/db/documents",
-                            params=params,
+                            f"{BACKEND_URL}/chat_models",
                             headers={
                                 "Authorization": f"Bearer {auth_token}"
                             },
                             timeout=10
                         )
                         if response.status_code == 200:
-                            direct_documents = response.json()
-                            print(f"Received {len(direct_documents)} documents from direct backend call")
-                            return direct_documents
+                            direct_models = response.json()
+                            print(f"Received {len(direct_models)} models from direct backend call")
+                            return direct_models
                         else:
                             print(f"Direct backend call failed: {response.status_code} - {response.text}")
-
-                    return documents or []
+                    return models or []
                 except Exception as e:
-                    error_msg = f"Error loading documents: {str(e)}"
+                    error_msg = f"Error loading chat models: {str(e)}"
                     st.error(error_msg)
                     print(error_msg)
                     import traceback
                     print(traceback.format_exc())
                     return []
 
-            # Fetch documents for the current agent
-            if "mcp_documents" not in st.session_state or st.button("🔄 Refresh Documents", key="refresh_mcp_documents"):
-                with st.spinner("Loading documents..."):
-                    st.session_state.mcp_documents = get_documents(st.session_state.mcp_selected_agent)
+            # Fetch models
+            if "mcp_chat_models" not in st.session_state or st.button("🔄 Refresh Models", key="refresh_mcp_models"):
+                with st.spinner("Loading chat models..."):
+                    st.session_state.mcp_chat_models = get_models()
 
-            # Display document selection dropdown
-            doc_options = []
-            if "mcp_documents" in st.session_state and st.session_state.mcp_documents:
-                for doc in st.session_state.mcp_documents:
-                    doc_options.append({
-                        "label": doc.get("document_name", "Unnamed Document"),
-                        "value": doc.get("id", "")
-                    })
+            # Display model selection dropdown
+            model_options = []  # No default options, only use what comes from MCP
+            model_descriptions = {}
 
-            # Set default document if not already set
-            if "mcp_selected_document" not in st.session_state:
-                st.session_state.mcp_selected_document = ""
+            if "mcp_chat_models" in st.session_state and st.session_state.mcp_chat_models:
+                for model in st.session_state.mcp_chat_models:
+                    model_id = model.get("id")
+                    if model_id:  # Only add if we have a valid ID
+                        model_options.append(model_id)
+                        model_descriptions[model_id] = model.get("description", "No description available")
 
-            # Document selection
-            if doc_options:  # Only show dropdown if there are documents
-                selected_doc = st.selectbox(
-                    "Select Document",
-                    options=[d["value"] for d in doc_options],
-                    format_func=lambda x: next((d["label"] for d in doc_options if d["value"] == x), x),
-                    index=next((i for i, d in enumerate(doc_options) if d["value"] == st.session_state.mcp_selected_document), 0) if st.session_state.mcp_selected_document in [d["value"] for d in doc_options] else 0,
-                    key="mcp_document_selector"
-                )
-            else:
-                # No documents available
-                selected_doc = ""
-                st.session_state.mcp_selected_document = ""
+            # Set default model if not already set
+            if "mcp_selected_model" not in st.session_state:
+                st.session_state.mcp_selected_model = model_options[0] if model_options else "default"
 
-            # Update selected document
-            if selected_doc != st.session_state.mcp_selected_document:
-                st.session_state.mcp_selected_document = selected_doc
-
-                # Also store the document ID for LangGraph session creation
-                st.session_state.mcp_selected_document_id = selected_doc
-
-                # Store the document name for better context
-                if selected_doc:
-                    doc_name = next((d["label"] for d in doc_options if d["value"] == selected_doc), "Selected Document")
-                    st.session_state.mcp_selected_document_name = doc_name
-                    print(f"Selected document: {doc_name} (ID: {selected_doc})")
+            # Model selection
+            if model_options:
+                # Determine the index to select
+                if st.session_state.mcp_selected_model in model_options:
+                    index = model_options.index(st.session_state.mcp_selected_model)
                 else:
-                    st.session_state.mcp_selected_document_name = None
+                    index = 0
+                    # Reset selected model if it's not in the options
+                    st.session_state.mcp_selected_model = model_options[0]
 
-            # Show info about document selection
-            if doc_options and selected_doc:
-                doc_name = next((d["label"] for d in doc_options if d["value"] == selected_doc), "Selected Document")
-                st.success(f"The agent will focus on document: {doc_name}")
-            elif not doc_options:
-                st.warning("No documents available for this agent. Please add documents first.")
-        else:
-            st.warning("Please select an agent first to view associated documents.")
+                # Display the model selection dropdown
+                selected_model = st.selectbox(
+                    "Select Model",
+                    options=model_options,
+                    index=index,
+                    key="mcp_model_selector"
+                )
+
+                # Update selected model
+                if selected_model != st.session_state.mcp_selected_model:
+                    st.session_state.mcp_selected_model = selected_model
+
+                # Show model description if available
+                if selected_model in model_descriptions and model_descriptions[selected_model]:
+                    st.info(model_descriptions[selected_model])
+            else:
+                st.warning("No models available from MCP service. Please check the MCP service configuration.")
+                st.session_state.mcp_selected_model = ""
+                            # --- System Prompt Section ---
+            st.subheader("System Prompt")
+            system_prompt = ""
+            # Try to find the system prompt from the selected agent
+            if (
+                "mcp_agents" in st.session_state and st.session_state.mcp_agents and
+                st.session_state.get("mcp_selected_agent")
+            ):
+                for agent in st.session_state.mcp_agents:
+                    if agent.get("id") == st.session_state.mcp_selected_agent:
+                        system_prompt = agent.get("system_message", "")
+                        break
+
+            # Display editable text area for system prompt
+            edited_system_prompt = st.text_area(
+                "Edit System Prompt for this Session",
+                value=system_prompt,
+                height=200,
+                key="mcp_system_prompt"
+            )
+            # Warn if edited
+            if edited_system_prompt != system_prompt:
+                st.warning("System prompt has been modified from the agent's default. This change will only apply to this chat session.")
+            # Do NOT assign to st.session_state['mcp_system_prompt'] after widget instantiation to avoid StreamlitAPIException.
+            # Use 'edited_system_prompt' variable wherever the current prompt is needed.
+
+            # --- Model Parameters Section ---
+            st.subheader("Model Parameters")
+            if "mcp_model_parameters" not in st.session_state:
+                st.session_state.mcp_model_parameters = {
+                    "temperature": 0.7,
+                    "max_tokens": 1024,
+                    "top_p": 0.9
+                }
+            # Sliders for model parameters
+            temperature = st.slider(
+                "Temperature",
+                min_value=0.0,
+                max_value=1.0,
+                value=st.session_state.mcp_model_parameters.get("temperature", 0.7),
+                step=0.05,
+                help="Higher values make output more random, lower values make it more deterministic."
+            )
+            max_tokens = st.slider(
+                "Max Output Tokens",
+                min_value=128,
+                max_value=4096,
+                value=st.session_state.mcp_model_parameters.get("max_tokens", 1024),
+                step=128,
+                help="Maximum number of tokens to generate in the response."
+            )
+            top_p = st.slider(
+                "Top P",
+                min_value=0.1,
+                max_value=1.0,
+                value=st.session_state.mcp_model_parameters.get("top_p", 0.9),
+                step=0.05,
+                help="Controls diversity of generated text. Lower values generate more focused text."
+            )
+            # Update parameters in session state
+            st.session_state.mcp_model_parameters = {
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "top_p": top_p
+            }
+
+            # Document Selection
+            st.subheader("Document Selection")
+
+            # Only show document selection if an agent is selected
+            if st.session_state.mcp_selected_agent:
+                # Function to get documents for the selected agent using MCP client
+                def get_documents(agent_id):
+                    try:
+                        # Get authentication token
+                        auth_token = st.session_state.get("_auth_token_")
+                        if not auth_token:
+                            st.error("Authentication token not found. Please log in again.")
+                            return []
+
+                        # Debug info
+                        st.info(f"Loading documents for agent {agent_id} from MCP service at {st.session_state.mcp_url}")
+                        print(f"Loading documents for agent {agent_id} from MCP service at {st.session_state.mcp_url}")
+
+                        # Create LangGraph client
+                        client = get_langgraph_client(st.session_state.mcp_url, auth_token)
+
+                        # If we have a session ID, use it
+                        if "mcp_session_id" in st.session_state:
+                            client.set_session_id(st.session_state.mcp_session_id)
+                            print(f"Using existing session ID for documents: {st.session_state.mcp_session_id}")
+
+                        # Call the list_documents tool
+                        print("Calling list_documents tool...")
+                        result = client.call_tool_sync("get_user_documents", {"token": auth_token, "agent_id": agent_id})
+                        # Handle both list and dict responses
+                        if result:
+                            if isinstance(result, list):
+                                documents = result
+                            else:
+                                documents = result.get("documents", [])
+                        else:
+                            documents = []
+                        print(f"Received {len(documents) if documents else 0} documents from LangGraph service")
+
+                        # If we got a new session ID from the client, save it
+                        st.session_state.mcp_session_id = client.session_id
+
+                        # Try direct backend call as fallback if no documents returned
+                        if not documents:
+                            print("No documents returned from MCP service, trying direct backend call...")
+                            params = {}
+                            if agent_id and agent_id != "all":
+                                params["agent_id"] = agent_id
+
+                            response = requests.get(
+                                f"{BACKEND_URL}/db/documents",
+                                params=params,
+                                headers={
+                                    "Authorization": f"Bearer {auth_token}"
+                                },
+                                timeout=10
+                            )
+                            if response.status_code == 200:
+                                direct_documents = response.json()
+                                print(f"Received {len(direct_documents)} documents from direct backend call")
+                                return direct_documents
+                            else:
+                                print(f"Direct backend call failed: {response.status_code} - {response.text}")
+                        return documents or []
+                    except Exception as e:
+                        error_msg = f"Error loading documents: {str(e)}"
+                        st.error(error_msg)
+                        print(error_msg)
+                        import traceback
+                        print(traceback.format_exc())
+                        return []
+
+                # Fetch documents for the current agent
+                if "mcp_documents" not in st.session_state or st.button("🔄 Refresh Documents", key="refresh_mcp_documents"):
+                    with st.spinner("Loading documents..."):
+                        st.session_state.mcp_documents = get_documents(st.session_state.mcp_selected_agent)
+
+                # Display document selection dropdown
+                doc_options = []
+                if "mcp_documents" in st.session_state and st.session_state.mcp_documents:
+                    for doc in st.session_state.mcp_documents:
+                        doc_options.append({
+                            "label": doc.get("document_name", "Unnamed Document"),
+                            "value": doc.get("id", "")
+                        })
+
+                # Set default document if not already set
+                if "mcp_selected_document" not in st.session_state:
+                    st.session_state.mcp_selected_document = ""
+
+                # Document selection
+                if doc_options:  # Only show dropdown if there are documents
+                    selected_doc = st.selectbox(
+                        "Select Document",
+                        options=[d["value"] for d in doc_options],
+                        format_func=lambda x: next((d["label"] for d in doc_options if d["value"] == x), x),
+                        index=next((i for i, d in enumerate(doc_options) if d["value"] == st.session_state.mcp_selected_document), 0) if st.session_state.mcp_selected_document in [d["value"] for d in doc_options] else 0,
+                        key="mcp_document_selector"
+                    )
+                else:
+                    # No documents available
+                    selected_doc = ""
+                    st.session_state.mcp_selected_document = ""
+
+                # Update selected document
+                if selected_doc != st.session_state.mcp_selected_document:
+                    st.session_state.mcp_selected_document = selected_doc
+
+                    # Also store the document ID for LangGraph session creation
+                    st.session_state.mcp_selected_document_id = selected_doc
+
+                    # Store the document name for better context
+                    if selected_doc:
+                        doc_name = next((d["label"] for d in doc_options if d["value"] == selected_doc), "Selected Document")
+                        st.session_state.mcp_selected_document_name = doc_name
+                        print(f"Selected document: {doc_name} (ID: {selected_doc})")
+                    else:
+                        st.session_state.mcp_selected_document_name = None
+
+                # Show info about document selection
+                if doc_options and selected_doc:
+                    doc_name = next((d["label"] for d in doc_options if d["value"] == selected_doc), "Selected Document")
+                    st.success(f"The agent will focus on document: {doc_name}")
+                elif not doc_options:
+                    st.warning("No documents available for this agent. Please add documents first.")
+            else:
+                st.warning("Please select an agent first to view associated documents.")
+
+        # MCP Tools Section
+        if agent_settings_tab == "MCP Tools":
+            st.subheader("MCP Tools")
+            mcp_tools = st.session_state.get("mcp_tools", [])
+            if not mcp_tools:
+                # Try to load tools if not already loaded
+                try:
+                    mcp_tools = get_mcp_tools(st.session_state.mcp_url)
+                    st.session_state.mcp_tools = mcp_tools
+                except Exception as e:
+                    st.error(f"Could not load MCP tools: {e}")
+            if mcp_tools:
+                for tool in mcp_tools:
+                    st.markdown(f"- **{tool.get('name', 'Unnamed Tool')}**: {tool.get('description', 'No description')}")
+            else:
+                st.info("No MCP tools available or failed to load.")
 
 # User Profile Container
 st.sidebar.markdown("## User Profile")
@@ -931,180 +1019,56 @@ def create_langgraph_session(url: str, tools: List[str] = None, model_name: str 
 
         return False
 
-# Function to send a message to the LangGraph service
-def send_langgraph_message(url: str, message: str, tools: List[str] = None, document_id: str = None, model_name: str = None) -> Dict[str, Any]:
-    try:
-        # Get authentication token
-        auth_token = st.session_state.get("_auth_token_")
-        if not auth_token:
-            return {"success": False, "error": "Authentication token not found. Please log in again."}
+# Function to send a chat message using the new structured RAG chat helper
 
-        # Initialize messages if not in session state
-        if "messages" not in st.session_state:
-            st.session_state.messages = [
-                {"role": "assistant", "content": "Hello! I'm your AI assistant. How can I help you today?"}
-            ]
+def send_message(
+    message: str,
+    retrieved_chunks: list = None,
+    system_prompt: str = None,
+    agent_id: str = None,
+    document_id: str = None,
+    parameters: dict = None,
+    metadata: dict = None,
+    session_id: str = None,
+) -> dict:
+    """
+    Send a chat message using the unified chat_with_agent_rag helper.
+    """
+    auth_token = st.session_state.get("_auth_token_")
+    mcp_url = st.session_state.get("mcp_url", "http://localhost:8001")
+    client = st.session_state.get("mcp_client")
+    if not client:
+        client = get_langgraph_client(mcp_url, auth_token)
+        st.session_state["mcp_client"] = client
 
-        # Get or create LangGraph client
-        if "langgraph_client" in st.session_state:
-            client = st.session_state.langgraph_client
-        else:
-            client = get_langgraph_client(url, auth_token)
+    # Always use the correct chat session id
+    if not session_id:
+        # Prefer mcp_chat_session_id, fall back to mcp_session_id
+        session_id = st.session_state.get("mcp_chat_session_id") or st.session_state.get("mcp_session_id")
 
-        # Get model name if selected
-        model_name = st.session_state.get("mcp_selected_model", "default")
+    # Debug output
+    print(f"DEBUG: Using session_id for send_message: {session_id}")
 
-        # Get document_id if not provided
-        if document_id is None:
-            document_id = st.session_state.get("mcp_selected_document_id")
+    # Make sure to set the session ID in the client to avoid the "No session ID provided" error
+    if session_id:
+        client.set_session_id(session_id)
 
-        # Get tool names if any
-        tool_names = tools
-
-        # Always try to create/verify the session before sending a message
-        if "langgraph_session_id" not in st.session_state or not st.session_state.langgraph_session_id:
-            # Create a new session with the selected model, tools, and document
-            # Create a custom system message for document context if needed
-            custom_system_message = None
-            if document_id:
-                document_name = st.session_state.get("mcp_selected_document_name", "the selected document")
-                custom_system_message = f"You are a helpful AI assistant that can answer questions about {document_name}. Use the document context provided to give accurate answers. If the document context doesn't contain the information needed, you can say so and answer based on your general knowledge."
-                print(f"Created custom system message for document: {document_name}")
-
-            if not create_langgraph_session(url, tool_names, model_name, system_message=custom_system_message, document_id=document_id):
-                return {"success": False, "error": "Failed to create LangGraph session"}
-
-        # Make sure the client has the correct session ID
-        client.set_session_id(st.session_state.langgraph_session_id)
-        print(f"Using LangGraph session ID for message: {st.session_state.langgraph_session_id}")
-
-        # Add user message to session state
-        st.session_state.messages.append({"role": "user", "content": message})
-
-        # Send the message using the LangGraph client
-        print(f"Sending message to LangGraph with model={model_name}, document_id={document_id}")
-        # Use positional arguments instead of keyword arguments
-        response = client.send_message(message, None, document_id, model_name)
-
-        # Process the response
-        if response:
-            # Debug the response structure in detail
-            print(f"Response from LangGraph: {response}")
-            print(f"Response type: {type(response)}")
-
-            # Print the result field structure
-            result = response.get("result", {})
-            print(f"Result field: {result}")
-            print(f"Result type: {type(result)}")
-
-            # If result is a dict, print its keys
-            if isinstance(result, dict):
-                print(f"Result keys: {result.keys()}")
-
-                # Check for source documents
-                if "source_documents" in result:
-                    print(f"Source documents found in result: {len(result['source_documents'])}")
-                elif "document_sources" in result:
-                    print(f"Document sources found in result: {len(result['document_sources'])}")
-                elif "metadata" in result and "source_documents" in result["metadata"]:
-                    print(f"Source documents found in result.metadata: {len(result['metadata']['source_documents'])}")
-                else:
-                    print("No source documents found in result")
-
-            # Extract the response content from the result field
-            result = response.get("result", {})
-            content = ""
-
-            # Try different ways to extract the content
-            if isinstance(result, dict):
-                # Try to get content from the result dictionary
-                content = result.get("content", "")
-
-                # If no content found, try to get it from the response field
-                if not content and "response" in result:
-                    content = result["response"]
-
-                # If still no content, check if there's a messages field with an assistant message
-                if not content and "messages" in result:
-                    messages = result["messages"]
-                    if isinstance(messages, list):
-                        for msg in messages:
-                            if isinstance(msg, dict) and msg.get("role") == "assistant":
-                                content = msg.get("content", "")
-                                break
-            elif isinstance(result, str):
-                # If result is a string, use it directly
-                content = result
-
-            # Create the assistant message
-            assistant_message = {
-                "role": "assistant",
-                "content": content,
-                "metadata": {}
-            }
-
-            # Add metadata if available
-            if isinstance(result, dict):
-                # Check for source documents in the result
-                if "source_documents" in result:
-                    assistant_message["metadata"]["source_documents"] = result["source_documents"]
-                    print(f"Added {len(result['source_documents'])} source documents from result.source_documents")
-                elif "document_sources" in result:
-                    assistant_message["metadata"]["source_documents"] = result["document_sources"]
-                    print(f"Added {len(result['document_sources'])} source documents from result.document_sources")
-                elif "metadata" in result and "source_documents" in result["metadata"]:
-                    assistant_message["metadata"]["source_documents"] = result["metadata"]["source_documents"]
-                    print(f"Added {len(result['metadata']['source_documents'])} source documents from result.metadata.source_documents")
-                # Check for messages field that might contain metadata
-                elif "messages" in result:
-                    messages = result["messages"]
-                    if isinstance(messages, list) and len(messages) > 0:
-                        for msg in messages:
-                            if isinstance(msg, dict) and msg.get("role") == "assistant" and "metadata" in msg:
-                                msg_metadata = msg["metadata"]
-                                if isinstance(msg_metadata, dict) and "source_documents" in msg_metadata:
-                                    assistant_message["metadata"]["source_documents"] = msg_metadata["source_documents"]
-                                    print(f"Added {len(msg_metadata['source_documents'])} source documents from result.messages[].metadata")
-                                    break
-                # Check for response field that might contain metadata
-                elif "response" in result and isinstance(result["response"], dict):
-                    response_obj = result["response"]
-                    if "metadata" in response_obj and "source_documents" in response_obj["metadata"]:
-                        assistant_message["metadata"]["source_documents"] = response_obj["metadata"]["source_documents"]
-                        print(f"Added {len(response_obj['metadata']['source_documents'])} source documents from result.response.metadata")
-
-            # Add tool calls if any
-            if "tool_calls" in response and response["tool_calls"]:
-                assistant_message["tool_calls"] = response["tool_calls"]
-
-            # Add the message to session state
-            st.session_state.messages.append(assistant_message)
-
-            # Return success
-            return {
-                "success": True,
-                "messages": st.session_state.messages,
-                "response": response
-            }
-        else:
-            # Return error
-            return {
-                "success": False,
-                "error": "No response from LangGraph",
-                "messages": st.session_state.messages
-            }
-    except Exception as e:
-        print(f"Exception in send_langgraph_message: {str(e)}")
-        return {"success": False, "error": f"Error sending message: {str(e)}"}
-
-# Keep the original function for backward compatibility
-def send_message(url: str, message: str, tools: List[str] = None, document_id: str = None, model_name: str = None) -> Dict[str, Any]:
-    # Use the LangGraph message function instead
-    try:
-        return send_langgraph_message(url, message, tools, document_id, model_name)
-    except Exception as e:
-        print(f"Exception in send_message: {str(e)}")
-        return {"success": False, "error": f"Error sending message: {str(e)}"}
+    # Log which session_id is being used for debugging
+    import logging
+    logger = logging.getLogger("langgraph_client")
+    logger.info(f"Using session_id for send_message: {session_id}")
+    return chat_with_agent_rag(
+        client,
+        token=auth_token,
+        question=message,
+        retrieved_chunks=retrieved_chunks,
+        system_prompt=system_prompt,
+        agent_id=agent_id,
+        document_id=document_id,
+        parameters=parameters,
+        metadata=metadata,
+        session_id=session_id,
+    )
 
 # Load configuration from backend if not already loaded
 if "config_loaded" not in st.session_state:
@@ -1198,11 +1162,70 @@ with st.sidebar:
     if st.session_state.get("mcp_selected_agent"):
         # Create a New Chat button at the top level in the sidebar
         if st.button("New Chat", key="new_chat_btn", use_container_width=True):
-            # Clear chat history and session ID
-            st.session_state.messages = []
-            st.session_state.mcp_session_id = str(uuid.uuid4())
-            st.toast("Started new chat session", icon="✅")
-            st.rerun()
+            agent_id = st.session_state.get("mcp_selected_agent")
+            document_id = st.session_state.get("mcp_selected_document")
+            title = f"Chat {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            auth_token = st.session_state.get("_auth_token_")
+            client = get_langgraph_client(st.session_state.mcp_url, auth_token)
+            # No need to import create_chat_session, we'll call the tool directly
+
+            # Create the session data dictionary
+            session_data = {
+                "agent_id": agent_id,
+                "title": title,
+                "metadata": {},
+                "chat_parameters": {}
+            }
+
+            # Add document_id if selected
+            if document_id:
+                session_data["document_id"] = document_id
+
+            # Call the create_chat_session tool directly
+            # Make sure to set the session ID first to avoid the "No session ID provided" error
+            if "mcp_session_id" in st.session_state and st.session_state.mcp_session_id:
+                client.set_session_id(st.session_state.mcp_session_id)
+
+            # Debug output
+            print(f"DEBUG: Creating chat session with data: {session_data}")
+
+            result = client.call_tool_sync("create_chat_session", {
+                "token": auth_token,
+                "session_data": session_data
+            })
+
+            # Debug output
+            print(f"DEBUG: create_chat_session result: {result}")
+
+            # Parse the result
+            if result and isinstance(result, str):
+                try:
+                    print(f"DEBUG: Parsing string result: {result}")
+                    result_json = json.loads(result)
+                    session_id = result_json.get("session_id") or result_json.get("id")
+                    print(f"DEBUG: Parsed session_id from JSON: {session_id}")
+                except json.JSONDecodeError as e:
+                    print(f"DEBUG: JSON decode error: {str(e)}")
+                    session_id = None
+            elif isinstance(result, dict):
+                print(f"DEBUG: Result is a dict: {result}")
+                session_id = result.get("session_id") or result.get("id")
+                print(f"DEBUG: Got session_id from dict: {session_id}")
+            else:
+                print(f"DEBUG: Result is neither string nor dict: {result}")
+                session_id = None
+
+            if session_id:
+                print(f"DEBUG: Setting session_id in session state: {session_id}")
+                st.session_state.messages = []
+                st.session_state.mcp_session_id = session_id
+                st.session_state.mcp_chat_session_id = session_id
+                st.toast("Started new chat session", icon="✅")
+                st.rerun()
+            else:
+                st.error("Failed to create new chat session.")
+                if result:
+                    st.error(f"Error details: {result}")
 
         # Function to load chat sessions for the current agent and document using MCP client
         def load_mcp_chat_sessions():
@@ -1405,10 +1428,14 @@ with chat_container:
     </style>
     """, unsafe_allow_html=True)
 
+    # Debug the messages state
+    print(f"DEBUG: Current messages in session state: {st.session_state.messages}")
+
     # Display messages
     for message in st.session_state.messages:
         role = message.get("role", "")
         content = message.get("content", "")
+        print(f"DEBUG: Displaying message - role: {role}, content: {content[:50]}...")
 
         if role == "user":
             st.chat_message("user", avatar="👤").write(content)
@@ -1416,76 +1443,52 @@ with chat_container:
             with st.chat_message("assistant", avatar="🤖"):
                 st.write(content)
 
-                # Display source documents if available
+                # --- Source Documents Expander ---
                 if "metadata" in message and "source_documents" in message["metadata"]:
-                    with st.expander("📄 Sources"):
-                        for i, doc in enumerate(message["metadata"]["source_documents"]):
-                            # Get document metadata - handle different metadata structures
-                            metadata = doc.get("metadata", {})
+                    source_documents = message["metadata"]["source_documents"]
+                    with st.expander("📄 Source Documents", expanded=False):
+                        if not source_documents:
+                            st.info("No source documents were used for this response.")
+                        else:
+                            for i, doc in enumerate(source_documents):
+                                # Extract metadata, handling possible locations
+                                metadata = doc.get("metadata", {})
+                                doc_name = metadata.get("document_name") or doc.get("document_name", "Unknown Document")
+                                chunk_index = metadata.get("chunk_index") or doc.get("chunk_index", 0)
+                                start_time = metadata.get("start_time") or doc.get("start_time")
+                                end_time = metadata.get("end_time") or doc.get("end_time")
+                                score = metadata.get("similarity") or doc.get("similarity", 0)
 
-                            # Debug the metadata structure
-                            print(f"Document metadata structure: {metadata}")
+                                # Fallback to nested metadata
+                                if (not doc_name or doc_name == "Unknown Document") and "metadata" in metadata:
+                                    nested = metadata["metadata"]
+                                    doc_name = nested.get("document_name", doc_name)
+                                    chunk_index = nested.get("chunk_index", chunk_index)
+                                    start_time = nested.get("start_time", start_time)
+                                    end_time = nested.get("end_time", end_time)
+                                    score = nested.get("similarity", score)
 
-                            # Try to get metadata from different possible locations
-                            if isinstance(metadata, dict):
-                                # Direct metadata
-                                doc_name = metadata.get("document_name", "Unknown Document")
-                                chunk_index = metadata.get("chunk_index", 0)
-                                start_time = metadata.get("start_time")
-                                end_time = metadata.get("end_time")
-                                score = metadata.get("similarity", 0)
+                                # Format values
+                                start_time_disp = f"{float(start_time):.2f}s" if start_time is not None else "N/A"
+                                end_time_disp = f"{float(end_time):.2f}s" if end_time is not None else "N/A"
+                                score_disp = f"{float(score):.3f}" if score is not None else "N/A"
 
-                            # If metadata fields are not in the top level, check if they're in a nested metadata field
-                            if not start_time and "metadata" in metadata and isinstance(metadata["metadata"], dict):
-                                nested_metadata = metadata["metadata"]
-                                if not doc_name or doc_name == "Unknown Document":
-                                    doc_name = nested_metadata.get("document_name", "Unknown Document")
-                                if chunk_index == 0:
-                                    chunk_index = nested_metadata.get("chunk_index", 0)
-                                start_time = nested_metadata.get("start_time")
-                                end_time = nested_metadata.get("end_time")
-                                if score == 0:
-                                    score = nested_metadata.get("similarity", 0)
-
-                            # If we still don't have values, check if they're directly in the doc
-                            if not start_time:
-                                start_time = doc.get("start_time")
-                                end_time = doc.get("end_time")
-                                if not doc_name or doc_name == "Unknown Document":
-                                    doc_name = doc.get("document_name", "Unknown Document")
-                                if chunk_index == 0:
-                                    chunk_index = doc.get("chunk_index", 0)
-                                if score == 0:
-                                    score = doc.get("similarity", 0)
-
-                            # Format values for display
-                            if start_time is not None:
-                                start_time = f"{float(start_time):.2f}s"
-                            else:
-                                start_time = "N/A"
-
-                            if end_time is not None:
-                                end_time = f"{float(end_time):.2f}s"
-                            else:
-                                end_time = "N/A"
-
-                            # Display source header with document name
-                            st.markdown(f"**Source {i+1}: {doc_name}**")
-
-                            # Display metadata in columns
-                            col1, col2, col3, col4 = st.columns(4)
-                            with col1:
-                                st.caption(f"Chunk: {chunk_index}")
-                            with col2:
-                                st.caption(f"Start Time: {start_time}")
-                            with col3:
-                                st.caption(f"End Time: {end_time}")
-                            with col4:
-                                st.caption(f"Score: {score:.3f}")
-
-                            # Display content in a code block for better readability
-                            st.code(doc.get("content", "No content available"))
-                            st.markdown("---")
+                                # Header
+                                st.markdown(f"**Source {i+1}: {doc_name}**")
+                                # Always display chunk/section as 1-based (never 0-based)
+                                chunk_display = int(chunk_index) + 1 if isinstance(chunk_index, int) or (isinstance(chunk_index, str) and chunk_index.isdigit()) else chunk_index
+                                col1, col2, col3, col4 = st.columns(4)
+                                with col1:
+                                    st.caption(f"Section: {chunk_display}")
+                                with col2:
+                                    st.caption(f"Start Time: {start_time_disp}")
+                                with col3:
+                                    st.caption(f"End Time: {end_time_disp}")
+                                with col4:
+                                    st.caption(f"Score: {score_disp}")
+                                st.code(doc.get("content", "No content available"))
+                                if i < len(source_documents) - 1:
+                                    st.markdown("---")
 
                 # Display tool calls if present
                 if "tool_calls" in message:
@@ -1497,19 +1500,28 @@ with chat_container:
                         with st.expander(f"🔧 Tool Call: {tool_name}"):
                             st.json(json.loads(arguments))
 
-# Message input
-if not st.session_state.mcp_activated:
-    st.info("MCP is currently deactivated. Please activate MCP in the sidebar to use the chat functionality.")
-    user_message = st.chat_input("Type your message here...", disabled=True)
-elif st.session_state.mcp_status["status"] != "online":
-    st.warning("MCP service is not connected. Please check the connection in the sidebar.")
-    user_message = st.chat_input("Type your message here...", disabled=True)
-else:
-    user_message = st.chat_input("Type your message here...")
+# Message input (always visible, disables as appropriate)
+chat_disabled = not st.session_state.mcp_activated or st.session_state.mcp_status["status"] != "online"
+chat_submission = st.chat_input(
+    "Type your message or attach an audio file...",
+    accept_file=True,
+    file_type=["wav", "mp3", "m4a", "ogg", "flac"],
+    disabled=chat_disabled,
+)
 
-if user_message:
+if chat_disabled:
+    if not st.session_state.mcp_activated:
+        st.info("MCP is currently deactivated. Please activate MCP in the sidebar to use the chat functionality.")
+    elif st.session_state.mcp_status["status"] != "online":
+        st.warning("MCP service is not connected. Please check the connection in the sidebar.")
+
+if chat_submission:
+    # chat_submission is a dict-like object with 'text' and 'files' attributes
+    user_message = chat_submission.text
+    uploaded_files = chat_submission.files  # List of UploadedFile objects
+
     # Check if MCP service is online and activated
-    if not st.session_state.mcp_activated or st.session_state.mcp_status["status"] != "online":
+    if chat_disabled:
         st.error("MCP Service is not available. Please check the connection.")
     else:
         # Get active tools from configuration
@@ -1519,6 +1531,12 @@ if user_message:
         if st.session_state.get("mcp_selected_agent") and "chat_with_agent" not in active_tools:
             active_tools.append("chat_with_agent")
 
+        # Show audio files in the chat UI
+        if uploaded_files:
+            for file in uploaded_files:
+                st.chat_message("user", avatar="👤").audio(file, format="audio/" + file.type.split("/")[-1])
+        # The rest of the chat logic (sending message to backend, etc.) continues below.
+
         # Show debugging information
         with st.expander("Debug Information", expanded=True):
             st.write("MCP URL:", st.session_state.mcp_url)
@@ -1527,7 +1545,10 @@ if user_message:
             st.write("Auth Headers:", get_auth_headers())
             st.write("Current Messages:", st.session_state.get("messages", []))
 
-        # Add user message to UI immediately
+        # Add user message to session state and UI
+        if user_message not in [msg.get("content", "") for msg in st.session_state.messages if msg.get("role") == "user"]:
+            st.session_state.messages.append({"role": "user", "content": user_message})
+            print(f"DEBUG: Added user message to session state: {user_message}")
         st.chat_message("user", avatar="👤").write(user_message)
 
         # Add a typing indicator
@@ -1536,7 +1557,68 @@ if user_message:
             typing_placeholder.markdown("_Thinking..._")
 
             # Send message to MCP service
-            result = send_message(st.session_state.mcp_url, user_message, active_tools)
+            # Gather chat parameters
+            agent_id = st.session_state.get("mcp_selected_agent")
+            document_id = st.session_state.get("mcp_selected_document")
+            system_prompt = st.session_state.get("edited_system_prompt")
+            parameters = st.session_state.get("mcp_model_parameters")
+            session_id = st.session_state.get("mcp_chat_session_id")
+            # For now, assume no retrieved_chunks or metadata (add if needed)
+
+            # Debug output
+            print(f"DEBUG: Preparing to send message with session_id: {session_id}")
+            print(f"DEBUG: agent_id: {agent_id}, document_id: {document_id}")
+            print(f"DEBUG: All session state keys: {list(st.session_state.keys())}")
+
+            if not session_id:
+                st.error("No active chat session. Please start a new chat before sending messages.")
+                typing_placeholder.empty()
+                result = {"success": False, "error": "No active chat session. Please start a new chat before sending messages."}
+            else:
+                try:
+                    print(f"DEBUG: Sending message to MCP service with session_id: {session_id}")
+                    print(f"DEBUG: agent_id: {agent_id}, document_id: {document_id}")
+
+                    # Create a new client for this request to ensure session ID is set
+                    auth_token = st.session_state.get("_auth_token_")
+                    mcp_url = st.session_state.get("mcp_url", "http://localhost:8001")
+                    client = get_langgraph_client(mcp_url, auth_token)
+
+                    # Explicitly set the session ID
+                    client.set_session_id(session_id)
+                    print(f"DEBUG: Set session_id in client to: {session_id}")
+
+                    # Call the chat_with_agent tool directly
+                    chat_request = {
+                        "message": user_message,
+                        "agent_id": agent_id,
+                        "document_id": document_id,
+                        "system_prompt": system_prompt,
+                        "parameters": parameters,
+                        "session_id": session_id
+                    }
+
+                    # Remove None values
+                    chat_request = {k: v for k, v in chat_request.items() if v is not None}
+
+                    # Use the chat_with_agent_rag helper to ensure correct payload structure
+                    from utils.langgraph_client import chat_with_agent_rag
+                    result = chat_with_agent_rag(
+                        client,
+                        token=auth_token,
+                        question=user_message,
+                        retrieved_chunks=None,
+                        system_prompt=system_prompt,
+                        agent_id=agent_id,
+                        document_id=document_id,
+                        parameters=parameters,
+                        metadata=None,
+                        session_id=session_id
+                    )
+                    print(f"DEBUG: Message sent successfully, result: {result}")
+                except Exception as e:
+                    print(f"DEBUG: Exception during send_message: {str(e)}")
+                    result = {"success": False, "error": f"Exception during send_message: {str(e)}"}
 
             # Clear the typing indicator
             typing_placeholder.empty()
@@ -1545,12 +1627,16 @@ if user_message:
             with st.expander("Response Debug", expanded=True):
                 st.json(result)
 
-            if not result.get("success", False):
+            if not isinstance(result, dict):
+                st.error("Internal error: Backend did not return a valid response object.")
+            elif not result.get("success", False):
                 error_msg = result.get("error", "Unknown error occurred")
                 st.error(f"Error: {error_msg}")
-
+                # Show raw error if present
+                if isinstance(result, dict) and "message" in result:
+                    st.error(f"Backend error message: {result['message']}")
                 # Handle authentication errors
-                if "authentication failed" in error_msg.lower():
+                if "authentication failed" in str(error_msg).lower():
                     st.warning("Please try refreshing the page and logging in again.")
                     # Clear authentication state
                     if st.button("Refresh Authentication"):
@@ -1559,7 +1645,70 @@ if user_message:
                         st.session_state._request_headers_ = None
                         st.rerun()
             else:
-                st.success("Message processed successfully")
+                # Add the assistant's response to the chat history
+                print(f"DEBUG: Processing successful result: {result}")
+                if "response" in result and result["response"]:
+                    print(f"DEBUG: Found response in result: {result['response']}")
+                    # If the result contains a messages array, use the last assistant message (with full metadata)
+                    if "messages" in result and result["messages"]:
+                        assistant_msgs = [msg for msg in result["messages"] if msg.get("role") == "assistant"]
+                        if assistant_msgs:
+                            last_assistant = assistant_msgs[-1]
+                            assistant_message = {
+                                "role": "assistant",
+                                "content": last_assistant.get("content", ""),
+                                "metadata": last_assistant.get("metadata", {})
+                            }
+                            st.session_state.messages.append(assistant_message)
+                            print(f"DEBUG: Added assistant message to session state (from messages): {assistant_message}")
+                            typing_placeholder.markdown(last_assistant.get("content", ""))
+                            st.success("Message processed successfully")
+                        else:
+                            # Fallback if no assistant message found
+                            assistant_message = {
+                                "role": "assistant",
+                                "content": result["response"],
+                                "metadata": result.get("metadata", {})
+                            }
+                            st.session_state.messages.append(assistant_message)
+                            print(f"DEBUG: Added assistant message to session state: {assistant_message}")
+                            typing_placeholder.markdown(result["response"])
+                            st.success("Message processed successfully")
+                    else:
+                        assistant_message = {
+                            "role": "assistant",
+                            "content": result["response"],
+                            "metadata": result.get("metadata", {})
+                        }
+                        st.session_state.messages.append(assistant_message)
+                        print(f"DEBUG: Added assistant message to session state: {assistant_message}")
+                        typing_placeholder.markdown(result["response"])
+                        st.success("Message processed successfully")
+                elif "messages" in result and result["messages"]:
+                    # If the response contains a messages array, add the last assistant message
+                    print(f"DEBUG: Found messages in result: {result['messages']}")
+                    for msg in result["messages"]:
+                        if msg.get("role") == "assistant":
+                            assistant_message = {
+                                "role": "assistant",
+                                "content": msg.get("content", ""),
+                                "metadata": msg.get("metadata", {})
+                            }
+                            st.session_state.messages.append(assistant_message)
+                            print(f"DEBUG: Added assistant message from messages array: {assistant_message}")
+                            typing_placeholder.markdown(msg.get("content", ""))
+                    st.success("Message processed successfully")
+                else:
+                    # If no response or messages, create a simple response
+                    print("DEBUG: No response or messages found in result, creating default response")
+                    default_response = "I received your message but couldn't generate a proper response. Please try again."
+                    assistant_message = {
+                        "role": "assistant",
+                        "content": default_response
+                    }
+                    st.session_state.messages.append(assistant_message)
+                    typing_placeholder.markdown(default_response)
+                    st.warning("No response content found in the result")
 
         # Force UI refresh
         st.rerun()

@@ -175,6 +175,9 @@ class ChatRequest(BaseModel):
     document_id: Optional[str] = None
     parameters: Dict[str, Any] = Field(default_factory=dict)
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    # New for structured RAG
+    retrieved_chunks: Optional[list] = None
+    system_prompt: Optional[str] = None
 
 class ChatResponse(BaseModel):
     session_id: str
@@ -850,7 +853,24 @@ async def chat_with_agent(chat_request: ChatRequest, background_tasks: Backgroun
                 except Exception as e:
                     logger.error(f"Error retrieving job metadata: {e}")
 
-                # Format the context with document content and metadata
+                # If structured RAG chunks are provided, use them to build the context
+                if hasattr(chat_request, 'retrieved_chunks') and chat_request.retrieved_chunks:
+                    context_parts = []
+                    for chunk in chat_request.retrieved_chunks:
+                        chunk_index = chunk.get("chunk_index", "?")
+                        start_time = chunk.get("start_time", "?")
+                        end_time = chunk.get("end_time", "?")
+                        doc_name = chunk.get("document_name", "Unknown Document")
+                        content = chunk.get("content", "")
+                        context_parts.append(
+                            f"Chunk {chunk_index} (Start: {start_time}s, End: {end_time}s) from {doc_name}:\n{content}\n"
+                        )
+                    state["context"] = "\n".join(context_parts)
+                    # Also add to document_sources for frontend
+                    state["document_sources"] = chat_request.retrieved_chunks
+                    return state
+
+                # Format the context with document content and metadata (legacy fallback)
                 context_parts = []
 
                 # Add document overview
@@ -869,14 +889,20 @@ async def chat_with_agent(chat_request: ChatRequest, background_tasks: Backgroun
                 context_parts.append("DOCUMENT CONTENT:")
 
                 for i, doc in enumerate(documents):
-                    # Add source identification
-                    if "job_id" in doc.get("metadata", {}):
-                        job_id = doc["metadata"]["job_id"]
-                        file_name = job_info.get(job_id, {}).get("file_name", "Unknown Document")
-                        chunk = doc["metadata"].get("chunk_index", 0)
-                        context_parts.append(f"[Source {i+1}: {file_name} (Section {chunk})]")
-                    else:
-                        context_parts.append(f"[Source {i+1}]")
+                    # Add source identification and metadata
+                    meta = doc.get("metadata", {})
+                    job_id = meta.get("job_id")
+                    file_name = job_info.get(job_id, {}).get("file_name", "Unknown Document") if job_id else "Unknown Document"
+                    chunk = meta.get("chunk_index", 0)
+                    start_time = meta.get("start_time")
+                    end_time = meta.get("end_time")
+
+                    # Build a metadata string for this chunk
+                    meta_str = f"[Source {i+1}: {file_name} (Section {chunk})"
+                    if start_time is not None and end_time is not None:
+                        meta_str += f", Start: {start_time}, End: {end_time}"
+                    meta_str += "]"
+                    context_parts.append(meta_str)
 
                     # Add the document content
                     context_parts.append(doc["content"])
@@ -895,21 +921,11 @@ async def chat_with_agent(chat_request: ChatRequest, background_tasks: Backgroun
                 # Construct messages
                 messages = state["messages"].copy()
 
-                # Create a system message directing the model to use the context
-                system_message = """You are a helpful AI assistant that answers questions based on document content.
-
-                The user has provided a document, and I'll show you the most relevant parts based on their question.
-
-                When answering:
-                1. Only use information from the provided document context
-                2. If the context doesn't contain the answer, say you don't know but don't make up information
-                3. Be concise and accurate
-                4. If the context is empty or says there's no relevant content, explain that you don't have enough information
-
-                Here is the document context for this question:
-
-                {context}
-                """.format(context=state["context"])
+                # Use provided system_prompt if present (structured RAG), else fallback
+                if hasattr(chat_request, 'system_prompt') and chat_request.system_prompt:
+                    system_message = chat_request.system_prompt
+                else:
+                    system_message = """You are a helpful AI assistant that answers questions based on document content.\n\nThe user has provided a document, and I'll show you the most relevant parts based on their question.\n\nWhen answering:\n1. Only use information from the provided document context.\n2. When you reference information, always cite the section number (chunk index), and if available, the start and end time of the chunk you are referencing.\n3. If the context doesn't contain the answer, say you don't know but don't make up information.\n4. Be concise and accurate.\n5. If the context is empty or says there's no relevant content, explain that you don't have enough information.\n\nHere is the document context for this question:\n\n{context}\n""".format(context=state["context"])
 
                 # Add the system message
                 final_messages = [SystemMessage(content=system_message)]

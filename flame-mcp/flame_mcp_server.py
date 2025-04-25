@@ -648,11 +648,15 @@ def create_chat_session(token: str, session_data: dict) -> str:
         JSON string of session info or error message.
     """
     try:
+        print(f"DEBUG: create_chat_session called with token: {token[:10]}... and session_data: {session_data}")
         if not token or not session_data:
             raise ValueError("Authentication token and session_data are required.")
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
         url = "http://localhost:8000/api/chat/sessions"
+        print(f"DEBUG: Making request to {url} with headers: {headers} and data: {session_data}")
         response = requests.post(url, headers=headers, json=session_data, timeout=10)
+        print(f"DEBUG: Response status code: {response.status_code}")
+        print(f"DEBUG: Response text: {response.text[:100]}...")
         if response.status_code == 200:
             return response.text
         elif response.status_code == 401:
@@ -661,7 +665,7 @@ def create_chat_session(token: str, session_data: dict) -> str:
             raise McpError(
                 ErrorData(
                     INTERNAL_ERROR,
-                    f"Failed to create chat session. HTTP status code: {response.status_code}"
+                    f"Failed to create chat session. HTTP status code: {response.status_code}, response: {response.text}"
                 )
             )
     except ValueError as e:
@@ -802,59 +806,87 @@ def delete_chat_session(token: str, session_id: str) -> dict:
         raise McpError(ErrorData(INTERNAL_ERROR, f"Unexpected error: {str(e)}")) from e
 
 @mcp.tool()
-def chat_with_agent(token: str, chat_request: Any) -> dict:
+def chat_with_agent(
+    token: str,
+    question: str,
+    retrieved_chunks: list = None,
+    system_prompt: str = None,
+    agent_id: str = None,
+    document_id: str = None,
+    parameters: dict = None,
+    metadata: dict = None,
+    session_id: str = None,
+) -> dict:
     """
-    Chat with an agent, optionally focused on a specific document.
+    Chat with an agent using structured RAG input. Supports all RAG parameters directly (question, retrieved_chunks, system_prompt, agent_id, document_id, parameters, metadata, session_id).
     Args:
         token: Bearer token for authentication (from authenticate_user)
-        chat_request: Dictionary with chat request fields (see ChatRequest)
+        question: User question
+        retrieved_chunks: List of dicts with chunk info
+        system_prompt: Optional system prompt
+        agent_id: Optional agent id
+        document_id: Optional document id
+        parameters: Optional chat parameters
+        metadata: Optional extra metadata
+        session_id: Optional chat session id
     Returns:
         Dictionary with chat response or empty dict if error.
     """
     try:
-        if not token or not chat_request:
-            raise ValueError("Authentication token and chat_request are required.")
+        print(f"DEBUG: chat_with_agent called with token: {token[:10]}... and session_id: {session_id}")
+        print(f"DEBUG: agent_id: {agent_id}, document_id: {document_id}")
+        print(f"DEBUG: question: {question}")
 
-        # Convert chat_request to a proper dictionary using our helper function
-        chat_request = convert_pydantic_to_dict(chat_request)
+        if not token or not question:
+            raise ValueError("Authentication token and question are required.")
+
+        chat_request = {
+            "message": question,
+            "retrieved_chunks": retrieved_chunks,
+            "system_prompt": system_prompt,
+            "agent_id": agent_id,
+            "document_id": document_id,
+            "parameters": parameters or {},
+            "metadata": metadata or {},
+        }
+
+        print(f"DEBUG: Created chat_request: {chat_request}")
+        if session_id:
+            chat_request["session_id"] = session_id
+            print(f"DEBUG: Added session_id {session_id} to chat_request")
 
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-
-        # Use the main chat endpoint
         url = "http://localhost:8000/api/chat/"
 
         # Recursively remove all problematic keys from parameters
-        if "parameters" in chat_request:
+        if "parameters" in request_data:
             for key in ["proxies", "http_client", "http_async_client", "client", "async_client"]:
-                deep_remove_key(chat_request["parameters"], key)
-            print(f"DEBUG: Cleaned chat_request parameters: {chat_request['parameters']}")
+                deep_remove_key(request_data["parameters"], key)
 
         # If session_id is provided, check if it exists first
-        if "session_id" in chat_request and chat_request["session_id"]:
-            session_id = chat_request["session_id"]
-            # Try to get the session first
-            session_url = f"http://localhost:8000/api/chat/sessions/{session_id}"
+        if "session_id" in request_data and request_data["session_id"]:
+            session_id_val = request_data["session_id"]
+            session_url = f"http://localhost:8000/api/chat/sessions/{session_id_val}"
             try:
+                print(f"DEBUG: Checking if session {session_id_val} exists at {session_url}")
                 session_response = requests.get(session_url, headers=headers, timeout=10)
+                print(f"DEBUG: Session check response: {session_response.status_code}")
                 if session_response.status_code != 200:
-                    # Session doesn't exist, remove session_id to create a new one
-                    print(f"DEBUG: Session {session_id} not found, will create a new one")
-                    del chat_request["session_id"]
+                    print(f"DEBUG: Session {session_id_val} not found, removing from request")
+                    del request_data["session_id"]
+                else:
+                    print(f"DEBUG: Session {session_id_val} exists, keeping in request")
             except Exception as e:
                 print(f"DEBUG: Error checking session: {str(e)}")
-                # On error, remove session_id to create a new one
-                del chat_request["session_id"]
+                del request_data["session_id"]
 
-        print(f"DEBUG: Making request to {url} with headers: {headers} and chat_request: {chat_request}")
-        response = requests.post(url, headers=headers, json=chat_request, timeout=30)
-        print(f"DEBUG: Response status code: {response.status_code}")
-        print(f"DEBUG: Response text: {response.text[:100]}...")
+        print(f"DEBUG: Sending chat request to {url} with data: {request_data}")
+        response = requests.post(url, headers=headers, json=request_data, timeout=30)
+        print(f"DEBUG: Chat response status code: {response.status_code}")
+        print(f"DEBUG: Chat response text: {response.text[:100]}...")
+
         if response.status_code == 200:
-            # Parse the JSON response and return it as a Python object
             result = json.loads(response.text)
-            print(f"DEBUG: chat_with_agent result: {result}")
-
-            # Format the response to match what the client expects
             formatted_result = {
                 "success": True,
                 "response": result.get("response", ""),
@@ -862,7 +894,7 @@ def chat_with_agent(token: str, chat_request: Any) -> dict:
                 "messages": result.get("messages", []),
                 "metadata": result.get("metadata", {})
             }
-
+            print(f"DEBUG: Formatted result: {formatted_result}")
             return formatted_result
         elif response.status_code == 401:
             raise McpError(ErrorData(INVALID_PARAMS, "Invalid or expired token."))
@@ -1389,6 +1421,7 @@ def get_supported_languages(token: str) -> str:
         raise McpError(ErrorData(INTERNAL_ERROR, f"Request error: {str(e)}")) from e
     except Exception as e:
         raise McpError(ErrorData(INTERNAL_ERROR, f"Unexpected error: {str(e)}")) from e
+
 
 # Set up the SSE transport for MCP communication.
 sse = SseServerTransport("/messages/")

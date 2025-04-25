@@ -270,6 +270,56 @@ class LangGraphClient:
             logger.error(f"Error deleting session: {str(e)}")
             return False
 
+    def call_tool(
+        self,
+        tool_name: str,
+        tool_args: Optional[Dict[str, Any]] = None,
+        max_retries: int = 3,
+        retry_delay: float = 1.0
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Call a tool without requiring a session.
+
+        Args:
+            tool_name: Name of the tool to call
+            tool_args: Arguments to pass to the tool
+            max_retries: Maximum number of retries
+            retry_delay: Delay between retries in seconds
+
+        Returns:
+            Tool result or None if failed
+        """
+        # Prepare the request - match the server's expected format
+        payload = {
+            "tool": tool_name,
+            "args": tool_args or {}
+        }
+
+        # Try to call the tool with retries
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    f"{self.mcp_url}/langgraph/tools/call",
+                    json=payload,
+                    headers=self.get_auth_headers(),
+                    timeout=self.timeout
+                )
+
+                if response.status_code == 200:
+                    # Extract the result field from the response
+                    response_data = response.json()
+                    return response_data
+                else:
+                    logger.error(f"Error calling tool (attempt {attempt+1}/{max_retries}): {response.status_code} - {response.text}")
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay)
+            except Exception as e:
+                logger.error(f"Error calling tool (attempt {attempt+1}/{max_retries}): {str(e)}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+
+        return None
+
     def call_tool_sync(
         self,
         tool_name: str,
@@ -380,67 +430,18 @@ class LangGraphClient:
 
         session_id = session_id or self.session_id
 
-        # Prepare the request
-        payload = {
-            "content": message
+        tool_args = {
+            "token": self.auth_token,
+            "chat_request": {
+                "message": message,
+                "document_id": document_id,
+                "parameters": {"model": model_name} if model_name else {},
+                "session_id": session_id,
+            }
         }
-
-        # Add document_id if provided
-        if document_id:
-            payload["document_id"] = document_id
-
-        # Add model_name if provided
-        if model_name:
-            payload["model_name"] = model_name
-
-        # Try to send the message with retries
-        for attempt in range(max_retries):
-            try:
-                # Since the /langgraph/sessions/{session_id}/messages endpoint doesn't exist,
-                # we'll use the tool call mechanism to send messages
-                # Prepare the chat request payload
-                chat_request = {
-                    "message": message,
-                    "parameters": {},
-                    "metadata": {}
-                }
-
-                # Don't include session_id in the chat_request to let the backend create a new session
-                # This avoids the 404 error when the session doesn't exist
-
-                # Add optional parameters if provided
-                if document_id:
-                    chat_request["document_id"] = document_id
-                if model_name:
-                    chat_request["parameters"]["model"] = model_name
-
-                tool_payload = {
-                    "tool": "chat_with_agent",
-                    "args": {
-                        "token": self.auth_token,
-                        "chat_request": chat_request
-                    }
-                }
-
-                response = requests.post(
-                    f"{self.mcp_url}/langgraph/tools/call",
-                    json=tool_payload,
-                    headers=self.get_auth_headers(),
-                    timeout=self.timeout
-                )
-
-                if response.status_code == 200:
-                    return response.json()
-                else:
-                    logger.error(f"Error sending message (attempt {attempt+1}/{max_retries}): {response.status_code} - {response.text}")
-                    if attempt < max_retries - 1:
-                        time.sleep(retry_delay)
-            except Exception as e:
-                logger.error(f"Error sending message (attempt {attempt+1}/{max_retries}): {str(e)}")
-                if attempt < max_retries - 1:
-                    time.sleep(retry_delay)
-
-        return None
+        # Remove None values from chat_request
+        tool_args["chat_request"] = {k: v for k, v in tool_args["chat_request"].items() if v is not None}
+        return self.call_tool_sync("chat_with_agent", tool_args, session_id, max_retries, retry_delay)
 
 
 # Convenience functions for common operations
@@ -532,6 +533,94 @@ def delete_session(client: LangGraphClient, session_id: Optional[str] = None) ->
     """
     return client.delete_session(session_id)
 
+def call_tool(
+    mcp_url: str,
+    tool_name: str,
+    tool_args: Optional[Dict[str, Any]] = None,
+    auth_token: Optional[str] = None,
+    max_retries: int = 3,
+    retry_delay: float = 1.0
+) -> Optional[Dict[str, Any]]:
+    """
+    Call a tool without requiring a client instance.
+
+    Args:
+        mcp_url: URL of the Flame MCP service (flame-mcp)
+        tool_name: Name of the tool to call
+        tool_args: Arguments to pass to the tool
+        auth_token: Authentication token
+        max_retries: Maximum number of retries
+        retry_delay: Delay between retries in seconds
+
+    Returns:
+        Tool result or None if failed
+    """
+    client = get_langgraph_client(mcp_url, auth_token)
+    return client.call_tool(tool_name, tool_args, max_retries, retry_delay)
+
+def chat_with_agent_rag(
+    client: LangGraphClient,
+    token: str,
+    question: str,
+    retrieved_chunks: list = None,
+    system_prompt: str = None,
+    agent_id: str = None,
+    document_id: str = None,
+    parameters: dict = None,
+    metadata: dict = None,
+    session_id: str = None
+) -> dict:
+    """
+    Call the 'chat_with_agent' tool with structured RAG chat arguments.
+
+    Args:
+        client: LangGraphClient instance
+        token: Authentication token
+        question: The user's question (message)
+        retrieved_chunks: List of retrieved chunk dicts (optional)
+        system_prompt: Custom system prompt (optional)
+        agent_id: Agent ID (optional)
+        document_id: Document ID (optional)
+        parameters: Additional model/chat parameters (optional)
+        metadata: Extra metadata (optional)
+        session_id: Chat session ID (optional)
+
+    Returns:
+        The tool call result as a dict
+    """
+    # Debug output
+    print(f"DEBUG: chat_with_agent_rag called with session_id: {session_id}")
+
+    tool_args = {
+        "token": token,
+        "chat_request": {
+            "message": question,
+            "retrieved_chunks": retrieved_chunks,
+            "system_prompt": system_prompt,
+            "agent_id": agent_id,
+            "document_id": document_id,
+            "parameters": parameters,
+            "metadata": metadata,
+            "session_id": session_id,
+        }
+    }
+    # Remove None values from chat_request
+    tool_args["chat_request"] = {k: v for k, v in tool_args["chat_request"].items() if v is not None}
+
+    # Make sure to set the session ID in the client to avoid the "No session ID provided" error
+    if session_id:
+        client.set_session_id(session_id)
+        print(f"DEBUG: Set session_id in client to: {session_id}")
+    else:
+        print("DEBUG: No session_id provided for chat_with_agent_rag")
+
+    # Call the tool
+    print(f"DEBUG: Calling chat_with_agent with args: {tool_args}")
+    result = client.call_tool_sync("chat_with_agent", tool_args)
+    print(f"DEBUG: chat_with_agent result: {result}")
+
+    return result
+
 def send_message(
     client: LangGraphClient,
     message: str,
@@ -556,4 +645,20 @@ def send_message(
     Returns:
         Response from the LangGraph session or None if failed
     """
-    return client.send_message(message, session_id, document_id, model_name, max_retries, retry_delay)
+    tool_args = {
+        "token": client.auth_token,
+        "chat_request": {
+            "question": message,
+            "document_id": document_id,
+            "parameters": {"model": model_name} if model_name else {},
+            "session_id": session_id,
+        }
+    }
+    # Remove None values from chat_request
+    tool_args["chat_request"] = {k: v for k, v in tool_args["chat_request"].items() if v is not None}
+
+    # Make sure to set the session ID in the client to avoid the "No session ID provided" error
+    if session_id:
+        client.set_session_id(session_id)
+
+    return client.call_tool_sync("chat_with_agent", tool_args, session_id, max_retries, retry_delay)
