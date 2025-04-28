@@ -329,18 +329,13 @@ col1, col2 = st.columns(2)
 with col1:
     st.subheader("MCP Service Configuration")
 
-    # MCP URL input
-    mcp_url = st.text_input("MCP Service URL", value=st.session_state.mcp_url.strip().rstrip('/'), key="mcp_url_input")
-
-    # Update button
-    if st.button("Update Connection", use_container_width=True):
-        sanitized_url = mcp_url.strip().rstrip('/')
-        st.session_state.mcp_url = sanitized_url
-        update_mcp_url()
+    # MCP URL display (read-only)
+    st.text_input("MCP Service URL", value=st.session_state.mcp_url.strip().rstrip('/'), key="mcp_url_input", disabled=True)
+    st.caption("The MCP Service URL is configured in the environment and cannot be changed here.")
 
     # Check status on page load
     if st.session_state.mcp_status.get("status", "unknown") == "unknown":
-        update_mcp_url()
+        st.session_state.mcp_status = check_mcp_status(st.session_state.mcp_url)
 
     # If we have active tools but no mcp_tools, try to load them
     if st.session_state.active_tools and not st.session_state.mcp_tools:
