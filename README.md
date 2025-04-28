@@ -23,6 +23,10 @@ Flame Audio AI is a powerful speech transcription, translation, and AI chat appl
 - **Customizable Chunking**: Configure chunk size and overlap to optimize document retrieval
 - **Document Organization**: Associate documents with specific AI agents
 
+### MCP (Multi-Channel Processing) Service
+- **Dedicated Service for Audio and Chat Processing**: The MCP backend provides scalable, isolated processing for audio, chat, and agent tools.
+- **Status Monitoring and Tool Management**: Configure and monitor MCP status, manage tools, and enable advanced orchestration features.
+
 ### Chat Capabilities
 - **AI Chat Agents**: Create customizable AI agents with different personalities and expertise
 - **Document-Aware Chat**: Chat about your transcribed documents with contextual understanding
@@ -30,7 +34,7 @@ Flame Audio AI is a powerful speech transcription, translation, and AI chat appl
 - **Realtime Updates**: Vector store configurations update in real-time across the application
 
 ### User Experience
-- **Intuitive Navigation**: Easily move between Home, Playground, Documents, and Chat interfaces
+- **Intuitive Navigation**: Easily move between Home, Playground, Documents, MCP, and Chat interfaces
 - **Responsive Design**: Clean, modern UI that works across devices
 - **Flexible Authentication**: Optional user authentication that can be enabled/disabled via configuration
 - **Persistent Settings**: User preferences persist between sessions
@@ -292,13 +296,41 @@ Restart=always
 WantedBy=multi-user.target
 ```
 
-### 8. Start and Enable the Services
+### 8. Create and Manage the MCP Service
+
+#### Create MCP Backend Service
+
+```bash
+sudo nano /etc/systemd/system/flame-mcp.service
+```
+
+Add the following content:
+
+```
+[Unit]
+Description=Flame Audio MCP Backend
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/flame-audio
+EnvironmentFile=/home/ubuntu/flame-audio/.env
+ExecStart=/home/ubuntu/flame-audio/venv/bin/python -m mcp.main --host 0.0.0.0 --port 8001
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+#### Start and Enable All Services
 
 ```bash
 sudo systemctl start flame-fastapi
 sudo systemctl enable flame-fastapi
 sudo systemctl start flame-streamlit
 sudo systemctl enable flame-streamlit
+sudo systemctl start flame-mcp
+sudo systemctl enable flame-mcp
 ```
 
 ### 9. Configure Nginx
@@ -319,6 +351,15 @@ server {
     location /api/ {
         rewrite ^/api/(.*)$ /$1 break;
         proxy_pass http://your-ec2-public-ip:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        client_max_body_size 100M;
+    }
+
+    # MCP Backend
+    location /mcp/ {
+        rewrite ^/mcp/(.*)$ /$1 break;
+        proxy_pass http://your-ec2-public-ip:8001;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         client_max_body_size 100M;
