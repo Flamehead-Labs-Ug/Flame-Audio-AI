@@ -20,12 +20,14 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual Environment
+# Ignore Python virtual environments
+.venv/
 venv/
 env/
-ENV/
-.venv/
-
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 # Environment variables
 .env
 
