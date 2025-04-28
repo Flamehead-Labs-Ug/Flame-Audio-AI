@@ -788,13 +788,27 @@ async def chat_with_agent(chat_request: ChatRequest, background_tasks: Backgroun
                             if not content and "text" in result:
                                 content = result.get("text", "")
 
+                            # Extract metadata
+                            result_metadata = result.get("metadata", {})
+
+                            # Get chunk_index and calculate segment
+                            chunk_index = result.get("chunk_index")
+                            segment = result_metadata.get("segment")
+                            if not segment and chunk_index is not None:
+                                # If no segment, use chunk_index + 1 as segment (1-based)
+                                segment = str(int(chunk_index) + 1) if isinstance(chunk_index, (int, float)) else str(chunk_index)
+
+                            # Create document with enhanced metadata
                             documents.append({
                                 "content": content,
                                 "metadata": {
                                     "job_id": result.get("job_id", document_id),
-                                    "chunk_index": result.get("chunk_index", 0),
+                                    "chunk_index": chunk_index,
                                     "similarity": result.get("similarity", 0),
-                                    "metadata": result.get("metadata", {})
+                                    "segment": segment,  # Add segment explicitly
+                                    "start_time": result.get("start_time"),
+                                    "end_time": result.get("end_time"),
+                                    "metadata": result_metadata
                                 }
                             })
                         except Exception as chunk_error:
@@ -822,9 +836,10 @@ async def chat_with_agent(chat_request: ChatRequest, background_tasks: Backgroun
                 documents = retrieve_document_content(query)
 
                 # Handle empty or failed document retrieval
-                if not documents or all("error" in doc.get("metadata", {}) for doc in documents):
+                if not documents or all((not doc.get("content")) or ("error" in doc.get("metadata", {})) for doc in documents):
                     logger.warning(f"No document content found for query: {query}")
-                    state["context"] = "No relevant content found in the document. Please try a different question."
+                    state["context"] = ""
+                    state["document_sources"] = []
                     return state
 
                 # Get job metadata to provide better context
@@ -885,7 +900,7 @@ async def chat_with_agent(chat_request: ChatRequest, background_tasks: Backgroun
                             context_parts.append(f"Language: {info['original_language']}")
                     context_parts.append("")
 
-                # Add document content sections
+                # Add document content segments
                 context_parts.append("DOCUMENT CONTENT:")
 
                 for i, doc in enumerate(documents):
@@ -893,12 +908,22 @@ async def chat_with_agent(chat_request: ChatRequest, background_tasks: Backgroun
                     meta = doc.get("metadata", {})
                     job_id = meta.get("job_id")
                     file_name = job_info.get(job_id, {}).get("file_name", "Unknown Document") if job_id else "Unknown Document"
-                    chunk = meta.get("chunk_index", 0)
+                    chunk = meta.get("chunk_index")
+                    chunk_str = str(chunk) if chunk is not None else "Unknown"
                     start_time = meta.get("start_time")
                     end_time = meta.get("end_time")
 
+                    # Add segment information to the metadata
+                    # First check if there's already a segment in the metadata
+                    segment = meta.get("segment")
+                    if not segment:
+                        # If no segment, use chunk_index + 1 as segment (1-based)
+                        segment = str(int(chunk) + 1) if chunk is not None and isinstance(chunk, (int, float)) else chunk_str
+                        # Add segment to metadata for frontend display
+                        meta["segment"] = segment
+
                     # Build a metadata string for this chunk
-                    meta_str = f"[Source {i+1}: {file_name} (Section {chunk})"
+                    meta_str = f"[Source {i+1}: {file_name} (Segment {segment})"
                     if start_time is not None and end_time is not None:
                         meta_str += f", Start: {start_time}, End: {end_time}"
                     meta_str += "]"
@@ -925,7 +950,7 @@ async def chat_with_agent(chat_request: ChatRequest, background_tasks: Backgroun
                 if hasattr(chat_request, 'system_prompt') and chat_request.system_prompt:
                     system_message = chat_request.system_prompt
                 else:
-                    system_message = """You are a helpful AI assistant that answers questions based on document content.\n\nThe user has provided a document, and I'll show you the most relevant parts based on their question.\n\nWhen answering:\n1. Only use information from the provided document context.\n2. When you reference information, always cite the section number (chunk index), and if available, the start and end time of the chunk you are referencing.\n3. If the context doesn't contain the answer, say you don't know but don't make up information.\n4. Be concise and accurate.\n5. If the context is empty or says there's no relevant content, explain that you don't have enough information.\n\nHere is the document context for this question:\n\n{context}\n""".format(context=state["context"])
+                    system_message = """You are a helpful AI assistant that answers questions based on document content.\n\nThe user has provided a document, and I'll show you the most relevant parts based on their question.\n\nWhen answering:\n1. Only use information from the provided document context.\n2. When you reference information, you MUST cite the EXACT segment number as shown in the source metadata (e.g., 'According to Source 1, Segment 3...'). DO NOT use Segment 1 unless that's the actual segment number shown in the metadata.\n3. If available, also mention the start and end time of the chunk you are referencing.\n4. If the context doesn't contain the answer, say you don't know but don't make up information.\n5. Be concise and accurate.\n6. If the context is empty or says there's no relevant content, explain that you don't have enough information.\n\nHere is the document context for this question:\n\n{context}\n""".format(context=state["context"])
 
                 # Add the system message
                 final_messages = [SystemMessage(content=system_message)]

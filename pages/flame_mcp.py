@@ -43,9 +43,9 @@ with st.sidebar:
         sac.MenuItem('Playground', icon='mic-fill', href='/flameaudio'),
         sac.MenuItem('Agents', icon='person-fill', href='/agents'),
         sac.MenuItem('Documents', icon='file-text-fill', href='/documents'),
-        sac.MenuItem('Chat', icon='chat-fill', href='/chat'),
+        #sac.MenuItem('Chat', icon='chat-fill', href='/chat'),
         sac.MenuItem('MCP', icon='gear-fill'),
-        sac.MenuItem('MCP Chat', icon='chat-dots-fill', href='/mcp_chat'),
+        sac.MenuItem('Flame Audio Chat', icon='chat-dots-fill', href='/mcp_chat'),
     ], open_all=True)
 
 # Show authentication forms if not authenticated
@@ -78,7 +78,7 @@ from utils.langgraph_client import (
 def get_mcp_tools(url: str) -> List[Dict[str, Any]]:
     try:
         # Log that we're getting tools
-        print(f"Getting tools from LangGraph at {url}/langgraph/tools")
+        print(f"Getting tools from LangGraph at {url}/langgraph/tools") # Ensure no space in URL
 
         # Get authentication token
         auth_token = st.session_state.get("_auth_token_")
@@ -87,10 +87,10 @@ def get_mcp_tools(url: str) -> List[Dict[str, Any]]:
             return []
 
         # Create LangGraph client
-        client = get_langgraph_client(url, auth_token)
+        client = get_langgraph_client(url, auth_token) # URL is passed correctly, ensure no space when using
 
         # Get tools using the LangGraph client
-        tools = langgraph_list_tools(client)
+        tools = langgraph_list_tools(client) # The client should use URLs without spaces
         print(f"Found {len(tools)} tools from LangGraph service")
 
         # If we have tools in active_tools but they're not in the response,
@@ -128,6 +128,9 @@ def get_mcp_tools(url: str) -> List[Dict[str, Any]]:
 # Function to check MCP service status using LangGraph
 def check_mcp_status(url: str) -> Dict[str, Any]:
     try:
+        # Sanitize URL - remove any trailing spaces or comments
+        url = url.split('#')[0].strip().rstrip('/')
+
         # First try the LangGraph endpoint
         try:
             # Get authentication token
@@ -137,7 +140,7 @@ def check_mcp_status(url: str) -> Dict[str, Any]:
                 return {"status": "error", "details": {"message": "Authentication token not found"}}
 
             # Create LangGraph client
-            client = get_langgraph_client(url, auth_token)
+            client = get_langgraph_client(url, auth_token) # URL is passed correctly, ensure no space when using
 
             # List sessions to check if LangGraph is working
             sessions = client.list_sessions()
@@ -184,7 +187,7 @@ def load_config():
         if response.status_code == 200:
             config = response.json()
             return {
-                "mcp_url": config.get("mcp_url", "http://localhost:8001"),
+                "mcp_url": config.get("mcp_url", os.environ.get("MCP_URL", "http://localhost:8001")),
                 "active_tools": config.get("active_tools", {}),
                 "remote_agents_enabled": config.get("remote_agents_enabled", False),
                 "workflow_enabled": config.get("workflow_enabled", False),
@@ -202,7 +205,8 @@ if "config_loaded" not in st.session_state:
     # Try to load config from backend
     config = load_config()
     if config:
-        st.session_state.mcp_url = config.get("mcp_url", "http://localhost:8001")
+        # Always sanitize loaded MCP URL
+        st.session_state.mcp_url = config.get("mcp_url", os.environ.get("MCP_URL", "http://localhost:8001")).strip().rstrip('/')
         st.session_state.active_tools = config.get("active_tools", {})
         st.session_state.remote_agents_enabled = config.get("remote_agents_enabled", False)
         st.session_state.workflow_enabled = config.get("workflow_enabled", False)
@@ -210,7 +214,7 @@ if "config_loaded" not in st.session_state:
         st.toast("Configuration loaded from backend", icon="ℹ️")
     else:
         # Default values
-        st.session_state.mcp_url = "http://localhost:8001"
+        st.session_state.mcp_url = os.environ.get("MCP_URL", "http://localhost:8001")
         st.session_state.active_tools = {}
         st.session_state.remote_agents_enabled = False
         st.session_state.workflow_enabled = False
@@ -268,10 +272,15 @@ def toggle_tool(tool_name: str, is_active: bool):
 
 # Function to update MCP URL
 def update_mcp_url():
-    print(f"Updating MCP URL to {st.session_state.mcp_url}")
+    # Sanitize URL before using it
+    sanitized_url = st.session_state.mcp_url.split('#')[0].strip().rstrip('/')
+    print(f"Updating MCP URL to {sanitized_url}")
+
+    # Store the sanitized URL back in session state
+    st.session_state.mcp_url = sanitized_url
 
     # Check MCP status
-    st.session_state.mcp_status = check_mcp_status(st.session_state.mcp_url)
+    st.session_state.mcp_status = check_mcp_status(sanitized_url)
     print(f"MCP status: {st.session_state.mcp_status['status']}")
 
     # Save the status to the backend
@@ -321,11 +330,12 @@ with col1:
     st.subheader("MCP Service Configuration")
 
     # MCP URL input
-    mcp_url = st.text_input("MCP Service URL", value=st.session_state.mcp_url, key="mcp_url_input")
+    mcp_url = st.text_input("MCP Service URL", value=st.session_state.mcp_url.strip().rstrip('/'), key="mcp_url_input")
 
     # Update button
     if st.button("Update Connection", use_container_width=True):
-        st.session_state.mcp_url = mcp_url
+        sanitized_url = mcp_url.strip().rstrip('/')
+        st.session_state.mcp_url = sanitized_url
         update_mcp_url()
 
     # Check status on page load
@@ -336,17 +346,41 @@ with col1:
     if st.session_state.active_tools and not st.session_state.mcp_tools:
         st.session_state.mcp_tools = get_mcp_tools(st.session_state.mcp_url)
 
-    # Display status
-    status = st.session_state.mcp_status
-    if status["status"] == "online":
-        st.success("MCP Service is online")
-        if "details" in status and isinstance(status["details"], dict):
-            with st.expander("Service Details"):
-                st.json(status["details"])
-    elif status["status"] == "error":
-        st.warning(f"MCP Service has errors: {status['details'].get('message', 'Unknown error')}")
-    else:
-        st.error(f"MCP Service is offline: {status['details'].get('message', 'Unknown error')}")
+    # Always check the actual MCP status before displaying
+    with st.spinner("Checking MCP status..."):
+        # Check the actual MCP status
+        current_status = check_mcp_status(st.session_state.mcp_url)
+        st.session_state.mcp_status = current_status
+
+        # Save the status to the backend
+        if "config_loaded" in st.session_state and st.session_state.get("authenticated", False):
+            config = {
+                "mcp_url": st.session_state.mcp_url,
+                "active_tools": st.session_state.active_tools,
+                "remote_agents_enabled": st.session_state.remote_agents_enabled,
+                "workflow_enabled": st.session_state.workflow_enabled,
+                "mcp_status": current_status
+            }
+            save_mcp_config(config)
+
+        # Display the current status
+        if current_status["status"] == "online":
+            st.success("MCP Service is online")
+            if "details" in current_status and isinstance(current_status["details"], dict):
+                with st.expander("Service Details"):
+                    st.json(current_status["details"])
+        elif current_status["status"] == "error":
+            st.warning(f"MCP Service has errors: {current_status['details'].get('message', 'Unknown error')}")
+        else:
+            st.error(f"MCP Service is offline: {current_status['details'].get('message', 'Unknown error')}")
+
+        # Add a button to check the status manually
+        if st.button("Check Status Again", key="check_mcp_status_again"):
+            # Check the actual MCP status with sanitized URL
+            sanitized_url = st.session_state.mcp_url.split('#')[0].strip().rstrip('/')
+            new_status = check_mcp_status(sanitized_url)
+            st.session_state.mcp_status = new_status
+            st.rerun()
 
     # Additional configuration options
     st.subheader("Service Options")

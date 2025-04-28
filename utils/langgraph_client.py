@@ -18,7 +18,9 @@ class LangGraphClient:
     Client for interacting with the LangGraph endpoints of the Flame MCP service (flame-mcp).
     """
 
-    def __init__(self, mcp_url: str = "http://localhost:8001", auth_token: Optional[str] = None):
+    def __init__(self, mcp_url: str = None, auth_token: Optional[str] = None):
+        if mcp_url is None:
+            mcp_url = os.environ.get("MCP_URL", "http://localhost:8001")
         """
         Initialize the LangGraph client.
 
@@ -163,7 +165,7 @@ class LangGraphClient:
 
             # Send the request
             response = requests.post(
-                f"{self.mcp_url}/langgraph/sessions",
+                f"{self.mcp_url}/langgraph/sessions",  # Correct: no space
                 json=payload,
                 headers=self.get_auth_headers(),
                 timeout=self.timeout
@@ -190,7 +192,7 @@ class LangGraphClient:
         """
         try:
             response = requests.get(
-                f"{self.mcp_url}/langgraph/sessions",
+                f"{self.mcp_url}/langgraph/sessions",  # Correct: no space
                 headers=self.get_auth_headers(),
                 timeout=self.timeout
             )

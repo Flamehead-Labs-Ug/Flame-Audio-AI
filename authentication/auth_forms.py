@@ -277,64 +277,54 @@ def auth_forms():
                         else:
                             # Generic error without exposing backend details
                             st.error("Login failed. Please try again or contact support if the problem persists.")
-                            # Log the actual error for debugging (not shown to user)
                             logger.error(f"Login exception: {str(e)}")
 
         with tab2:
-                st.subheader("Sign Up")
+            st.subheader("Sign Up")
 
-                # Sign up form
-                with st.form("signup_form"):
-                    email = st.text_input("Email")
-                    password = st.text_input("Password", type="password")
-                    st.caption("Password must be at least 6 characters long")
-                    confirm_password = st.text_input("Confirm Password", type="password")
-                    submit = st.form_submit_button("Sign Up", use_container_width=True)
+            # Sign up form
+            with st.form("signup_form"):
+                signup_email = st.text_input("Email", key="signup_email")
+                signup_password = st.text_input("Password", type="password", key="signup_password")
+                st.caption("Password must be at least 6 characters long")
+                signup_submit = st.form_submit_button("Sign Up", use_container_width=True)
 
-                    if submit:
-                        if not email or not password:
-                            st.error("Please enter both email and password.")
-                        elif len(password) < 6:
-                            st.error("Password must be at least 6 characters long.")
-                        elif password != confirm_password:
-                            st.error("Passwords do not match!")
-                        else:
-                            try:
-                                # Sign up using FastAPI backend
-                                response = requests.post(
-                                    f"{BACKEND_URL}/auth/signup",
-                                    json={"email": email, "password": password}
-                                )
-
-                                if response.status_code == 200:
-                                    data = response.json()
-                                    st.success("Sign up successful! You can now login with your credentials.")
-                                    # Auto-switch to login tab
-                                    st.rerun()
+                if signup_submit:
+                    if not signup_email or not signup_password:
+                        st.error("Please enter both email and password.")
+                    elif len(signup_password) < 6:
+                        st.error("Password must be at least 6 characters long.")
+                    else:
+                        try:
+                            response = requests.post(
+                                f"{BACKEND_URL}/auth/signup",
+                                json={"email": signup_email, "password": signup_password}
+                            )
+                            if response.status_code == 200:
+                                st.success("Sign up successful! Please check your email (including spam/junk folders) for a verification link if required, then proceed to log in.")
+                                st.info("You can now log in using your credentials.")
+                            else:
+                                try:
+                                    error_data = response.json()
+                                    error_message = error_data.get("detail", "Unknown error")
+                                except:
+                                    error_message = response.text or "Unknown error"
+                                if "already registered" in error_message.lower() or "exists" in error_message.lower():
+                                    st.error("This email is already registered. Please log in or use a different email.")
+                                elif "weak password" in error_message.lower():
+                                    st.error("Password is too weak. Please choose a stronger password.")
+                                elif "invalid" in error_message.lower() or "email" in error_message.lower():
+                                    st.error("Invalid email address. Please check and try again.")
                                 else:
-                                    try:
-                                        error_data = response.json()
-                                        error_message = error_data.get("detail", "Unknown error")
-                                    except:
-                                        error_message = response.text or "Unknown error"
+                                    # Generic error without exposing backend details
+                                    st.error("Sign up failed. Please try again or contact support if the problem persists.")
+                                    # Log the actual error for debugging (not shown to user)
+                                    logger.error(f"Sign up error: {error_message}")
 
-                                    # Check for common error patterns
-                                    if any(phrase in error_message.lower() for phrase in ["already registered", "already exists", "user already", "email already"]):
-                                        st.error("It looks like you already have an account. Try logging in instead.")
-                                    elif "password" in error_message.lower():
-                                        st.error("Password error: Please choose a stronger password (at least 6 characters).")
-                                    elif "email" in error_message.lower():
-                                        st.error("Email error: Please enter a valid email address.")
-                                    else:
-                                        # Generic error without exposing backend details
-                                        st.error("Sign up failed. Please try again or contact support if the problem persists.")
-                                        # Log the actual error for debugging (not shown to user)
-                                        logger.error(f"Sign up error: {error_message}")
-
-                            except Exception as e:
-                                st.error("Unable to connect to the authentication service. Please try again later.")
-                                # Log the actual error for debugging (not shown to user)
-                                logger.error(f"Sign up request error: {str(e)}")
+                        except Exception as e:
+                            st.error("Unable to connect to the authentication service. Please try again later.")
+                            # Log the actual error for debugging (not shown to user)
+                            logger.error(f"Sign up request error: {str(e)}")
 
 def logout():
     """Log out the current user"""

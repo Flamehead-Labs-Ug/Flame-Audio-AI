@@ -11,6 +11,7 @@ from mcp.server.sse import SseServerTransport
 import inspect
 import sys
 import json
+import re
 from typing import Dict, Any, Optional, List, Union
 
 # Create an MCP server instance for DB tools
@@ -887,12 +888,65 @@ def chat_with_agent(
 
         if response.status_code == 200:
             result = json.loads(response.text)
+            print(f"DEBUG: Raw result from backend: {result}")
+
+            # Extract source documents if present
+            metadata = result.get("metadata", {})
+            source_documents = result.get("source_documents", [])
+
+            # If source_documents is in the top level, add it to metadata
+            if source_documents and "source_documents" not in metadata:
+                metadata["source_documents"] = source_documents
+                print(f"DEBUG: Added source_documents to metadata: {len(source_documents)} documents")
+
+            # Process source documents to ensure they have proper metadata
+            if "source_documents" in metadata:
+                for doc in metadata["source_documents"]:
+                    # Make sure each document has a metadata field
+                    if "metadata" not in doc:
+                        doc["metadata"] = {}
+
+                    # Check if we have nested metadata (common in Qdrant responses)
+                    nested_metadata = doc["metadata"].get("metadata", {})
+
+                    # Extract segment information from the document content if available
+                    content = doc.get("content", "")
+                    if content and "Segment" in content:
+                        try:
+                            # Try to extract segment number from content
+                            segment_match = re.search(r"Segment\s+(\d+)", content)
+                            if segment_match:
+                                segment_num = segment_match.group(1)
+                                # Add segment to both levels of metadata for compatibility
+                                doc["metadata"]["segment"] = segment_num
+                                if nested_metadata:
+                                    doc["metadata"]["metadata"]["segment"] = segment_num
+                                print(f"DEBUG: Extracted segment {segment_num} from content")
+                        except Exception as e:
+                            print(f"DEBUG: Error extracting segment info: {str(e)}")
+
+                    # If we have chunk_index in nested metadata but not segment, use chunk_index as segment
+                    if nested_metadata and "chunk_index" in nested_metadata and "segment" not in nested_metadata:
+                        chunk_index = nested_metadata.get("chunk_index")
+                        if chunk_index is not None:
+                            # Add segment to both levels of metadata for compatibility
+                            doc["metadata"]["segment"] = str(chunk_index + 1)  # Make 1-based for display
+                            nested_metadata["segment"] = str(chunk_index + 1)  # Make 1-based for display
+                            print(f"DEBUG: Using chunk_index {chunk_index} as segment {chunk_index + 1}")
+
+                    # If we still don't have a segment, set it to 1 by default
+                    if "segment" not in doc["metadata"]:
+                        doc["metadata"]["segment"] = "1"
+                        if nested_metadata:
+                            nested_metadata["segment"] = "1"
+                        print(f"DEBUG: Setting default segment to 1")
+
             formatted_result = {
                 "success": True,
                 "response": result.get("response", ""),
                 "session_id": result.get("session_id", ""),
                 "messages": result.get("messages", []),
-                "metadata": result.get("metadata", {})
+                "metadata": metadata
             }
             print(f"DEBUG: Formatted result: {formatted_result}")
             return formatted_result

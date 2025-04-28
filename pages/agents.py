@@ -36,9 +36,9 @@ with st.sidebar:
         sac.MenuItem('Playground', icon='mic-fill', href='/flameaudio'),
         sac.MenuItem('Agents', icon='person-fill'),
         sac.MenuItem('Documents', icon='file-text-fill', href='/documents'),
-        sac.MenuItem('Chat', icon='chat-fill', href='/chat'),
+        #sac.MenuItem('Chat', icon='chat-fill', href='/chat'),
         sac.MenuItem('MCP', icon='gear-fill', href='/flame_mcp'),
-        sac.MenuItem('MCP Chat', icon='chat-dots-fill', href='/mcp_chat'),
+        sac.MenuItem('Flame Audio Chat', icon='chat-dots-fill', href='/mcp_chat'),
     ], open_all=True)
 
 # Show authentication forms if not authenticated
@@ -118,11 +118,11 @@ def view_agent(agent_id):
 
 # Function to chat with an agent
 def chat_with_agent(agent_id):
-    # Set the chat agent in session state so chat.py can load it
+    # Set the chat agent in session state so mcp_chat.py can load it
     st.session_state.chat_agent = agent_id
 
-    # Switch to the chat page
-    st.switch_page("pages/chat.py")
+    # Switch to the MCP chat page
+    st.switch_page("pages/mcp_chat.py")
 
 # Check if user is authenticated
 if AUTH_ENABLED and not st.session_state.get("authenticated", False):

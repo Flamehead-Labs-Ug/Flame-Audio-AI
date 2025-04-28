@@ -16,17 +16,24 @@ from datetime import datetime
 import threading
 import queue
 import copy
+import sys
 #from database.vector_store import get_vector_store
 #from database.vector_store_realtime import initialize_vector_store_realtime
 
-# Configure page settings with title, favicon, and description
-st.set_page_config(
-    page_title="Flame Audio AI",
-    page_icon="logos/flame logo.jpg",
-    layout="wide",
-    initial_sidebar_state="expanded",
-    menu_items={
-        'About': """# Flame Audio
+# Check if this file is being run directly (not imported)
+# __name__ will be '__main__' if the script is run directly
+# If it's imported, __name__ will be the module name 'pages.flameaudio'
+is_main_script = __name__ == '__main__' or os.path.basename(sys.argv[0]) == 'flameaudio.py'
+
+# Configure page settings only when run as a standalone page
+if is_main_script:
+    st.set_page_config(
+        page_title="Flame Audio AI",
+        page_icon="logos/flame logo.jpg",
+        layout="wide",
+        initial_sidebar_state="expanded",
+        menu_items={
+            'About': """# Flame Audio
 A powerful speech transcription and translation application built by FlameheadLabs. Convert spoken language to text through recorded audio or uploaded files with support for multiple languages and advanced processing options."""
     }
 )
@@ -366,9 +373,9 @@ with st.sidebar:
 	    sac.MenuItem('Playground', icon='mic-fill'),
         sac.MenuItem('Agents', icon='person-fill', href='/agents'),
         sac.MenuItem('Documents', icon='file-text-fill', href='/documents'),
-        sac.MenuItem('Chat', icon='chat-fill', href='/chat'),
+        #sac.MenuItem('Chat', icon='chat-fill', href='/chat'),
         sac.MenuItem('MCP', icon='gear-fill', href='/flame_mcp'),
-        sac.MenuItem('MCP Chat', icon='chat-dots-fill', href='/mcp_chat'),
+        sac.MenuItem('Flame Audio Chat', icon='chat-dots-fill', href='/mcp_chat'),
     ], open_all=True)
 
 # Show authentication status based on AUTH_ENABLED setting

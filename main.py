@@ -30,7 +30,7 @@ from deep_remove_key import deep_remove_key
 # To use the MCP service:
 # 1. Ensure this main backend is running on port 8000
 # 2. Start the MCP service using: mcp_service\run_mcp_service.bat
-# 3. The MCP service will be available at http://localhost:8001
+# 3. The MCP service URL is set by the MCP_URL environment variable (default: http://localhost:8001)
 
 # Initialize security scheme
 security = HTTPBearer()
@@ -97,9 +97,9 @@ async def langgraph_tools_call(request: Request):
         args = payload.get("args", {})
         if not tool_name:
             raise HTTPException(status_code=400, detail="Missing 'tool_name' in request body")
+        mcp_url = os.environ.get("MCP_URL", "http://localhost:8001") + "/tools/call"
+        mcp_payload = {"tool_name": tool_name, "args": args}
         async with httpx.AsyncClient() as client:
-            mcp_url = "http://localhost:8001/tools/call"
-            mcp_payload = {"tool_name": tool_name, "args": args}
             mcp_response = await client.post(mcp_url, json=mcp_payload)
             if mcp_response.status_code == 200:
                 return JSONResponse(content=mcp_response.json())

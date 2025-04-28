@@ -1,9 +1,11 @@
 import streamlit as st
+# Page title and description
+# Page title and description
+st.set_page_config(page_title="Save Document", page_icon="📊", layout="wide")
 import streamlit_antd_components as sac
 
 
-# Page title and description
-st.set_page_config(page_title="Save Document", page_icon="📊", layout="wide")
+
 
 import os
 import sys
@@ -211,9 +213,9 @@ with st.sidebar:
         sac.MenuItem('Home', icon='house-fill', href='/flamehome'),
 	    sac.MenuItem('Playground', icon='mic-fill', href='/flameaudio'),
         sac.MenuItem('Documents', icon='file-text-fill', href='/documents'),
-        sac.MenuItem('Chat', icon='chat-fill', href='/chat'),
+        #sac.MenuItem('Chat', icon='chat-fill', href='/chat'),
         sac.MenuItem('MCP', icon='gear-fill', href='/flame_mcp'),
-        sac.MenuItem('MCP Chat', icon='chat-dots-fill', href='/mcp_chat'),
+        sac.MenuItem('Flame Audio Chat', icon='chat-dots-fill', href='/mcp_chat'),
     ], open_all=True)
 
 
@@ -228,7 +230,7 @@ with st.sidebar:
             email = st.session_state['user'].get('email', '')
             st.markdown(f"**Signed in as:**")
             st.info(email)
-            if st.button("Sign Out", key="sign_out_btn", use_container_width=True):
+            if st.button("Sign Out", key="save_doc_sign_out_btn", use_container_width=True):
                 # Use the proper logout function from auth_forms.py
                 from authentication.auth_forms import logout
                 logout()

@@ -11,8 +11,9 @@ from authentication.auth import get_current_user, User
 router = APIRouter(prefix="/mcp", tags=["mcp"])
 
 # Pydantic models for request validation
+import os
 class MCPConfigurationBase(BaseModel):
-    mcp_url: str = "http://localhost:8001"
+    mcp_url: str = os.environ.get("MCP_URL", "http://localhost:8001")
     active_tools: Dict[str, bool] = {}
     remote_agents_enabled: bool = False
     workflow_enabled: bool = False
@@ -72,7 +73,7 @@ async def get_mcp_configuration(current_user: User = Depends(get_current_user)):
 
             params = {
                 "user_id": current_user.id,
-                "mcp_url": "http://localhost:8001",
+                "mcp_url": os.environ.get("MCP_URL", "http://localhost:8001"),
                 "active_tools": json.dumps({}),
                 "remote_agents_enabled": False,
                 "workflow_enabled": False,

@@ -2,7 +2,7 @@ import streamlit as st
 
 # Page configuration must be the first Streamlit command
 st.set_page_config(
-    page_title="Flame Audio MCP Chat",
+    page_title="Flame Audio Chat",
     page_icon="💬",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -40,8 +40,8 @@ init_auth_session()
 handle_auth_callback()
 
 # Initialize basic session state variables first to avoid reference errors
-if "mcp_url" not in st.session_state:
-    st.session_state.mcp_url = "http://localhost:8001"
+# MCP URL is always loaded from environment, like BACKEND_URL
+MCP_URL = os.environ.get("MCP_URL", "http://localhost:8001").split('#')[0].strip().rstrip('/')
 
 if "mcp_status" not in st.session_state:
     st.session_state.mcp_status = {"status": "unknown"}
@@ -105,7 +105,7 @@ def load_mcp_config():
         if response.status_code == 200:
             config = response.json()
             return {
-                "mcp_url": config.get("mcp_url", "http://localhost:8001"),
+                "mcp_url": config.get("mcp_url", os.environ.get("MCP_URL", "http://localhost:8001")),
                 "active_tools": config.get("active_tools", {}),
                 "remote_agents_enabled": config.get("remote_agents_enabled", False),
                 "workflow_enabled": config.get("workflow_enabled", False),
@@ -146,6 +146,9 @@ def save_mcp_config(config):
 # Function to check MCP service status using LangGraph client
 def check_mcp_status(url: str) -> Dict[str, Any]:
     try:
+        # Sanitize URL - remove any trailing spaces or comments
+        url = url.split('#')[0].strip().rstrip('/')
+
         # Get authentication token
         auth_token = st.session_state.get("_auth_token_")
 
@@ -163,7 +166,7 @@ def check_mcp_status(url: str) -> Dict[str, Any]:
                 # Save the status to the backend
                 if "config_loaded" in st.session_state and st.session_state.get("authenticated", False):
                     config = {
-                        "mcp_url": st.session_state.mcp_url,
+                        "mcp_url": MCP_URL,
                         "active_tools": st.session_state.active_tools,
                         "remote_agents_enabled": st.session_state.remote_agents_enabled,
                         "workflow_enabled": st.session_state.workflow_enabled,
@@ -187,7 +190,7 @@ def check_mcp_status(url: str) -> Dict[str, Any]:
         # Save the status to the backend
         if "config_loaded" in st.session_state and st.session_state.get("authenticated", False):
             config = {
-                "mcp_url": st.session_state.mcp_url,
+                "mcp_url": MCP_URL,
                 "active_tools": st.session_state.active_tools,
                 "remote_agents_enabled": st.session_state.remote_agents_enabled,
                 "workflow_enabled": st.session_state.workflow_enabled,
@@ -208,7 +211,7 @@ def check_mcp_status(url: str) -> Dict[str, Any]:
         # Save the status to the backend
         if "config_loaded" in st.session_state and st.session_state.get("authenticated", False):
             config = {
-                "mcp_url": st.session_state.mcp_url,
+                "mcp_url": MCP_URL,
                 "active_tools": st.session_state.active_tools,
                 "remote_agents_enabled": st.session_state.remote_agents_enabled,
                 "workflow_enabled": st.session_state.workflow_enabled,
@@ -221,11 +224,11 @@ def check_mcp_status(url: str) -> Dict[str, Any]:
 
 
 # Page title
-st.title("MCP Chat")
+st.title("Flame Audio Chat")
 
 # Add common elements to the sidebar
 with st.sidebar:
-    st.title("Flame Audio AI: MCP Chat")
+    st.title("Flame Audio AI: Flame Audio Chat")
 
 # Navigation menu (always visible)
 with st.sidebar:
@@ -234,9 +237,9 @@ with st.sidebar:
         sac.MenuItem('Playground', icon='mic-fill', href='/flameaudio'),
         sac.MenuItem('Agents', icon='person-fill', href='/agents'),
         sac.MenuItem('Documents', icon='file-text-fill', href='/documents'),
-        sac.MenuItem('Chat', icon='chat-fill', href='/chat'),
+        #sac.MenuItem('Chat', icon='chat-fill', href='/chat'),
         sac.MenuItem('MCP', icon='gear-fill', href='/flame_mcp'),
-        sac.MenuItem('MCP Chat', icon='chat-dots-fill'),
+        sac.MenuItem('Flame Audio Chat', icon='chat-dots-fill'),
     ], open_all=True)
 
 # Show authentication forms if not authenticated
@@ -258,122 +261,300 @@ if AUTH_ENABLED:
         st.warning("Authentication token not found. Please log in again.")
         st.stop()
 
-# MCP Settings Container: Always visible for authenticated users
-if AUTH_ENABLED and st.session_state.get("authenticated", False):
-    st.sidebar.markdown("## Chat Settings")
-    mcp_settings_container = st.sidebar.container(border=True)
-    with mcp_settings_container:
-        mcp_activated = st.toggle(
-            "Activate MCP",
-            value=st.session_state.get("mcp_activated", False),
-            help="Toggle to activate or deactivate MCP features."
-        )
 
-        # Update session state if the toggle value changed
-        if mcp_activated != st.session_state.get("mcp_activated", False):
-            st.session_state.mcp_activated = mcp_activated
 
-            # If MCP is activated, check the status and update it
-            if mcp_activated:
-                # Check the actual MCP status
-                new_status = check_mcp_status(st.session_state.mcp_url)
-                st.session_state.mcp_status = new_status
+# Chat Sessions Container
+with st.sidebar:
+    st.subheader("Chat Sessions")
 
-                # If MCP is online, try to create a session
-                if new_status.get("status") == "online":
-                    print("MCP is online, creating a session...")
-                    # Get authentication token
-                    auth_token = st.session_state.get("_auth_token_")
-                    if auth_token:
-                        # Create LangGraph client
-                        client = get_langgraph_client(st.session_state.mcp_url, auth_token)
-
-                        # Create a new session
-                        # Get user ID from session state
-                        user_id = st.session_state['user']['id'] if 'user' in st.session_state and 'id' in st.session_state['user'] else None
-                        if not user_id:
-                            print("User ID not found in session state. Cannot create MCP session.")
-                        else:
-                            session_created = create_session(client, user_id)
-                            print(f"Session creation result: {session_created}")
-                            if session_created:
-                                # Save the session ID
-                                st.session_state.mcp_session_id = client.session_id
-                                print(f"Created new session: {st.session_state.mcp_session_id}")
-
-                                # Store the client in session state
-                                st.session_state.mcp_client = client
-                            else:
-                                print("Failed to create MCP session")
-                    else:
-                        print("No authentication token found, cannot create MCP session")
-
-                # Save the status to the backend
-                if "config_loaded" in st.session_state and st.session_state.get("authenticated", False):
-                    config = {
-                        "mcp_url": st.session_state.mcp_url,
-                        "active_tools": st.session_state.active_tools,
-                        "remote_agents_enabled": st.session_state.remote_agents_enabled,
-                        "workflow_enabled": st.session_state.workflow_enabled,
-                        "mcp_status": new_status
-                    }
-                    save_mcp_config(config)
-
-                # Force a rerun to update the UI
+    # --- AUTO-CREATE CHAT SESSION ON PAGE LOAD ---
+    # If MCP is activated, online, an agent is selected, and no active chat session, create one automatically
+    if (
+        st.session_state.get("mcp_activated", False)
+        and st.session_state.get("mcp_status", {}).get("status") == "online"
+        and st.session_state.get("mcp_selected_agent")
+        and not st.session_state.get("mcp_chat_session_id")
+    ):
+        try:
+            agent_id = st.session_state.get("mcp_selected_agent")
+            document_id = st.session_state.get("mcp_selected_document")
+            title = f"Chat {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            auth_token = st.session_state.get("_auth_token_")
+            client = get_langgraph_client(MCP_URL, auth_token)
+            session_data = {
+                "agent_id": agent_id,
+                "title": title,
+                "metadata": {},
+            }
+            if document_id:
+                session_data["document_id"] = document_id
+            # Set session if exists
+            if st.session_state.get("mcp_session_id"):
+                client.set_session_id(st.session_state.mcp_session_id)
+            result = client.call_tool_sync("create_chat_session", {
+                "token": auth_token,
+                "session_data": session_data
+            })
+            # Parse session ID from result
+            session_id = None
+            if result and isinstance(result, str):
+                try:
+                    result_json = json.loads(result)
+                    session_id = result_json.get("session_id") or result_json.get("id")
+                except json.JSONDecodeError:
+                    session_id = None
+            elif isinstance(result, dict):
+                session_id = result.get("session_id") or result.get("id")
+            if session_id:
+                st.session_state.messages = []
+                st.session_state.mcp_session_id = session_id
+                st.session_state.mcp_chat_session_id = session_id
+                st.toast("Started new chat session", icon="✅")
                 st.rerun()
-        else:
-            st.session_state.mcp_activated = mcp_activated
-        # MCP Service URL input
-        st.session_state.mcp_url = st.text_input(
-            "MCP Service URL",
-            value=st.session_state.get("mcp_url", "http://localhost:8001"),
-            key="mcp_url_input"
-        )
-        # Update button with actual functionality
-        if st.button("Update Connection", key="update_mcp_url"):
-            # Check the actual MCP status
-            new_status = check_mcp_status(st.session_state.mcp_url)
-            st.session_state.mcp_status = new_status
+            else:
+                st.error("Failed to auto-create new chat session.")
+                if result:
+                    st.error(f"Error details: {result}")
+        except Exception as e:
+            st.error(f"Exception during auto-creating chat session: {str(e)}")
+    # Only show the New Chat button and sessions if an agent is selected
+    if st.session_state.get("mcp_selected_agent"):
+        # Create a New Chat button at the top level in the sidebar
+        if st.button("New Chat", key="new_chat_btn", use_container_width=True):
+            agent_id = st.session_state.get("mcp_selected_agent")
+            document_id = st.session_state.get("mcp_selected_document")
+            title = f"Chat {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            auth_token = st.session_state.get("_auth_token_")
+            client = get_langgraph_client(MCP_URL, auth_token)
+            # No need to import create_chat_session, we'll call the tool directly
 
-            # Save the status to the backend
-            if "config_loaded" in st.session_state and st.session_state.get("authenticated", False):
-                config = {
-                    "mcp_url": st.session_state.mcp_url,
-                    "active_tools": st.session_state.active_tools,
-                    "remote_agents_enabled": st.session_state.remote_agents_enabled,
-                    "workflow_enabled": st.session_state.workflow_enabled,
-                    "mcp_status": new_status
-                }
-                save_mcp_config(config)
+            # Create the session data dictionary
+            session_data = {
+                "agent_id": agent_id,
+                "title": title,
+                "metadata": {},
+                "chat_parameters": {}
+            }
 
-            # Force a rerun to update the UI
+            # Add document_id if selected
+            if document_id:
+                session_data["document_id"] = document_id
+
+            # Call the create_chat_session tool directly
+            # Make sure to set the session ID first to avoid the "No session ID provided" error
+            if "mcp_session_id" in st.session_state and st.session_state.mcp_session_id:
+                client.set_session_id(st.session_state.mcp_session_id)
+
+            # Debug output
+            print(f"DEBUG: Creating chat session with data: {session_data}")
+
+            result = client.call_tool_sync("create_chat_session", {
+                "token": auth_token,
+                "session_data": session_data
+            })
+
+            # Debug output
+            print(f"DEBUG: create_chat_session result: {result}")
+
+            # Parse the result
+            if result and isinstance(result, str):
+                try:
+                    print(f"DEBUG: Parsing string result: {result}")
+                    result_json = json.loads(result)
+                    session_id = result_json.get("session_id") or result_json.get("id")
+                    print(f"DEBUG: Parsed session_id from JSON: {session_id}")
+                except json.JSONDecodeError as e:
+                    print(f"DEBUG: JSON decode error: {str(e)}")
+                    session_id = None
+            elif isinstance(result, dict):
+                print(f"DEBUG: Result is a dict: {result}")
+                session_id = result.get("session_id") or result.get("id")
+                print(f"DEBUG: Got session_id from dict: {session_id}")
+            else:
+                print(f"DEBUG: Result is neither string nor dict: {result}")
+                session_id = None
+
+            if session_id:
+                print(f"DEBUG: Setting session_id in session state: {session_id}")
+                st.session_state.messages = []
+                st.session_state.mcp_session_id = session_id
+                st.session_state.mcp_chat_session_id = session_id
+                st.toast("Started new chat session", icon="✅")
+                st.rerun()
+            else:
+                st.error("Failed to create new chat session.")
+                if result:
+                    st.error(f"Error details: {result}")
+
+        # Function to load chat sessions for the current agent and document using MCP client
+        def load_mcp_chat_sessions():
+            try:
+                # Get authentication token
+                auth_token = st.session_state.get("_auth_token_")
+
+                # Create LangGraph client
+                client = get_langgraph_client(MCP_URL, auth_token)
+
+                # If we have a session ID, use it
+                if "mcp_session_id" in st.session_state:
+                    client.set_session_id(st.session_state.mcp_session_id)
+
+                # Get agent ID and document ID
+                agent_id = st.session_state.get("mcp_selected_agent", "")
+                document_id = st.session_state.get("mcp_selected_document", "")
+
+                # Call the list_chat_sessions tool
+                result = client.call_tool_sync("get_user_chat_sessions", {"token": auth_token, "agent_id": agent_id})
+                # Handle both list and dict responses
+                if result:
+                    if isinstance(result, list):
+                        sessions = result
+                    else:
+                        sessions = result.get("sessions", [])
+                else:
+                    sessions = []
+
+                # If we got a new session ID from the client, save it
+                st.session_state.mcp_session_id = client.session_id
+
+                # If a document is selected, filter the sessions in the frontend
+                if document_id and sessions:
+                    sessions = [session for session in sessions if session.get('document_id') == document_id]
+
+                return sessions or []
+            except Exception as e:
+                st.error(f"Error loading chat sessions: {str(e)}")
+                return []
+
+        # Function to load a specific chat session using MCP client
+        def load_mcp_chat_session(session_id):
+            try:
+                # Get authentication token
+                auth_token = st.session_state.get("_auth_token_")
+
+                # Create LangGraph client
+                client = get_langgraph_client(MCP_URL, auth_token)
+
+                # If we have a session ID, use it
+                if "mcp_session_id" in st.session_state:
+                    client.set_session_id(st.session_state.mcp_session_id)
+
+                # Call the get_chat_session tool
+                result = client.call_tool_sync("get_chat_session", {"session_id": session_id})
+                # Handle both dict and list responses (though this should always be a dict)
+                session_data = result if result else None
+
+                # If we got a new session ID from the client, save it
+                st.session_state.mcp_session_id = client.session_id
+
+                # Update messages in session state
+                if session_data:
+                    st.session_state.messages = session_data.get("messages", [])
+
+                return session_data
+            except Exception as e:
+                st.error(f"Error loading chat session: {str(e)}")
+                return None
+
+        # Function to delete a chat session using MCP client
+        def delete_mcp_chat_session(session_id):
+            try:
+                # Get authentication token
+                auth_token = st.session_state.get("_auth_token_")
+
+                # Create LangGraph client
+                client = get_langgraph_client(MCP_URL, auth_token)
+
+                # If we have a session ID, use it
+                if "mcp_session_id" in st.session_state:
+                    client.set_session_id(st.session_state.mcp_session_id)
+
+                # Call the delete_chat_session tool
+                result = client.call_tool_sync("delete_chat_session", {"session_id": session_id})
+                success = result.get("success", False) if result else False
+
+                # If we got a new session ID from the client, save it
+                st.session_state.mcp_session_id = client.session_id
+
+                return success
+            except Exception as e:
+                st.error(f"Error deleting chat session: {str(e)}")
+                return False
+
+        # Display session reload button
+        if st.button("🔄 Reload Sessions", key="reload_sessions_btn", use_container_width=True):
+            st.success("Reloading chat sessions...")
+            st.session_state.sessions_reload_requested = True
+
+        # Check if sessions reload was requested
+        if st.session_state.get("sessions_reload_requested", False):
+            # Clear the flag first
+            st.session_state.sessions_reload_requested = False
+            # Rerun for safer page refresh
             st.rerun()
 
-        # MCP status display
-        if st.session_state.get("mcp_status", {}).get("status") == "online":
-            st.success("MCP Service is online")
-        else:
-            st.warning("MCP Service is offline or status unknown")
+        # Create a scrollable container for all chat sessions
+        sessions_container = st.container(height=300, border=True)
 
-            # Add a button to check the status manually
-            if st.button("Check Status", key="check_mcp_status"):
-                # Check the actual MCP status
-                new_status = check_mcp_status(st.session_state.mcp_url)
-                st.session_state.mcp_status = new_status
+        # Load and display existing chat sessions
+        with sessions_container:
+            sessions = load_mcp_chat_sessions()
 
-                # Save the status to the backend
-                if "config_loaded" in st.session_state and st.session_state.get("authenticated", False):
-                    config = {
-                        "mcp_url": st.session_state.mcp_url,
-                        "active_tools": st.session_state.active_tools,
-                        "remote_agents_enabled": st.session_state.remote_agents_enabled,
-                        "workflow_enabled": st.session_state.workflow_enabled,
-                        "mcp_status": new_status
-                    }
-                    save_mcp_config(config)
+            if not sessions:
+                if st.session_state.get('mcp_selected_document'):
+                    # Get document name for better user feedback
+                    doc_name = ""
+                    if "mcp_documents" in st.session_state:
+                        for doc in st.session_state.mcp_documents:
+                            if doc.get("id") == st.session_state.get('mcp_selected_document'):
+                                doc_name = doc.get("document_name", "selected document")
+                                break
 
-                # Force a rerun to update the UI
-                st.rerun()
+                    if doc_name:
+                        st.info(f"No chat sessions found for agent with document: {doc_name}")
+                        st.caption("Sessions are specific to both the selected agent and document.")
+                    else:
+                        st.info("No chat sessions found for this agent with the selected document.")
+                        st.caption("Sessions are specific to both the selected agent and document.")
+                else:
+                    st.info("No chat sessions found for this agent.")
+
+            # Display all sessions inside the scrollable container
+            for session in sessions:
+                session_title = session.get("title", "Untitled Chat")
+                session_id = session.get("id")
+                doc_name = session.get("document_name", "")
+                created_at = datetime.fromisoformat(session.get("created_at", datetime.now().isoformat()).replace("Z", "+00:00"))
+                formatted_date = created_at.strftime("%Y-%m-%d %H:%M")
+
+                # Create a container for each session
+                session_container = st.container(border=True)
+                with session_container:
+                    # Session title and metadata
+                    st.write(f"**{session_title}**")
+                    st.caption(f"Created: {formatted_date}")
+                    if doc_name:
+                        st.caption(f"Document: {doc_name}")
+
+                    # Actions for this session
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("Load", key=f"load_{session_id}"):
+                            load_mcp_chat_session(session_id)
+                            st.session_state.mcp_chat_session_id = session_id
+                            st.rerun()
+                    with col2:
+                        if st.button("Delete", key=f"delete_{session_id}"):
+                            if delete_mcp_chat_session(session_id):
+                                if st.session_state.get("mcp_chat_session_id") == session_id:
+                                    st.session_state.messages = []
+                                    st.session_state.mcp_chat_session_id = None
+                                st.rerun()
+                            else:
+                                st.error(f"Failed to delete session")
+    else:
+        # If no agent is selected, show a message
+        st.info("Select an agent in the settings below to see your chat sessions.")
 
 # Agent Settings Container
 if st.session_state.get("mcp_activated", False):
@@ -401,12 +582,12 @@ if st.session_state.get("mcp_activated", False):
                         return []
 
                     # Debug info
-                    st.info(f"Loading agents from MCP service at {st.session_state.mcp_url}")
-                    print(f"Loading agents from MCP service at {st.session_state.mcp_url}")
+                    st.info(f"Loading agents from MCP service at {MCP_URL}")
+                    print(f"Loading agents from MCP service at {MCP_URL}")
                     print(f"Auth token: {auth_token[:10]}...")
 
                     # Create LangGraph client
-                    client = get_langgraph_client(st.session_state.mcp_url, auth_token)
+                    client = get_langgraph_client(MCP_URL, auth_token)
 
                     # If we have a session ID, use it
                     if "mcp_session_id" in st.session_state:
@@ -505,6 +686,99 @@ if st.session_state.get("mcp_activated", False):
             if "mcp_documents" in st.session_state:
                 del st.session_state.mcp_documents
 
+        # Document Selection (moved from Model Config tab)
+        st.subheader("Document Selection")
+        if st.session_state.mcp_selected_agent:
+            def get_documents(agent_id):
+                try:
+                    auth_token = st.session_state.get("_auth_token_")
+                    if not auth_token:
+                        st.error("Authentication token not found. Please log in again.")
+                        return []
+                    st.info(f"Loading documents for agent {agent_id} from MCP service at {MCP_URL}")
+                    print(f"Loading documents for agent {agent_id} from MCP service at {MCP_URL}")
+                    client = get_langgraph_client(MCP_URL, auth_token)
+                    if "mcp_session_id" in st.session_state:
+                        client.set_session_id(st.session_state.mcp_session_id)
+                        print(f"Using existing session ID for documents: {st.session_state.mcp_session_id}")
+                    print("Calling list_documents tool...")
+                    result = client.call_tool_sync("get_user_documents", {"token": auth_token, "agent_id": agent_id})
+                    if result:
+                        if isinstance(result, list):
+                            documents = result
+                        else:
+                            documents = result.get("documents", [])
+                    else:
+                        documents = []
+                    print(f"Received {len(documents) if documents else 0} documents from LangGraph service")
+                    st.session_state.mcp_session_id = client.session_id
+                    if not documents:
+                        print("No documents returned from MCP service, trying direct backend call...")
+                        params = {}
+                        if agent_id and agent_id != "all":
+                            params["agent_id"] = agent_id
+                        response = requests.get(
+                            f"{BACKEND_URL}/db/documents",
+                            params=params,
+                            headers={
+                                "Authorization": f"Bearer {auth_token}"
+                            },
+                            timeout=10
+                        )
+                        if response.status_code == 200:
+                            direct_documents = response.json()
+                            print(f"Received {len(direct_documents)} documents from direct backend call")
+                            return direct_documents
+                        else:
+                            print(f"Direct backend call failed: {response.status_code} - {response.text}")
+                    return documents or []
+                except Exception as e:
+                    error_msg = f"Error loading documents: {str(e)}"
+                    st.error(error_msg)
+                    print(error_msg)
+                    import traceback
+                    print(traceback.format_exc())
+                    return []
+            if "mcp_documents" not in st.session_state or st.button("🔄 Refresh Documents", key="refresh_mcp_documents"):
+                with st.spinner("Loading documents..."):
+                    st.session_state.mcp_documents = get_documents(st.session_state.mcp_selected_agent)
+            doc_options = []
+            if "mcp_documents" in st.session_state and st.session_state.mcp_documents:
+                for doc in st.session_state.mcp_documents:
+                    doc_options.append({
+                        "label": doc.get("document_name", "Unnamed Document"),
+                        "value": doc.get("id", "")
+                    })
+            if "mcp_selected_document" not in st.session_state:
+                st.session_state.mcp_selected_document = ""
+            if doc_options:
+                selected_doc = st.selectbox(
+                    "Select Document",
+                    options=[d["value"] for d in doc_options],
+                    format_func=lambda x: next((d["label"] for d in doc_options if d["value"] == x), x),
+                    index=next((i for i, d in enumerate(doc_options) if d["value"] == st.session_state.mcp_selected_document), 0) if st.session_state.mcp_selected_document in [d["value"] for d in doc_options] else 0,
+                    key="mcp_document_selector"
+                )
+            else:
+                selected_doc = ""
+                st.session_state.mcp_selected_document = ""
+            if selected_doc != st.session_state.mcp_selected_document:
+                st.session_state.mcp_selected_document = selected_doc
+                st.session_state.mcp_selected_document_id = selected_doc
+                if selected_doc:
+                    doc_name = next((d["label"] for d in doc_options if d["value"] == selected_doc), "Selected Document")
+                    st.session_state.mcp_selected_document_name = doc_name
+                    print(f"Selected document: {doc_name} (ID: {selected_doc})")
+                else:
+                    st.session_state.mcp_selected_document_name = None
+            if doc_options and selected_doc:
+                doc_name = next((d["label"] for d in doc_options if d["value"] == selected_doc), "Selected Document")
+                st.success(f"The agent will focus on document: {doc_name}")
+            elif not doc_options:
+                st.warning("No documents available for this agent. Please add documents first.")
+        else:
+            st.warning("Please select an agent first to view associated documents.")
+
         # Model Config Section
         if agent_settings_tab == "Model Config":
             st.subheader("Model Config")
@@ -520,11 +794,11 @@ if st.session_state.get("mcp_activated", False):
                         return []
 
                     # Debug info
-                    st.info(f"Loading chat models from MCP service at {st.session_state.mcp_url}")
-                    print(f"Loading chat models from MCP service at {st.session_state.mcp_url}")
+                    st.info(f"Loading chat models from MCP service at {MCP_URL}")
+                    print(f"Loading chat models from MCP service at {MCP_URL}")
 
                     # Create LangGraph client
-                    client = get_langgraph_client(st.session_state.mcp_url, auth_token)
+                    client = get_langgraph_client(MCP_URL, auth_token)
 
                     # If we have a session ID, use it
                     if "mcp_session_id" in st.session_state:
@@ -686,133 +960,6 @@ if st.session_state.get("mcp_activated", False):
                 "top_p": top_p
             }
 
-            # Document Selection
-            st.subheader("Document Selection")
-
-            # Only show document selection if an agent is selected
-            if st.session_state.mcp_selected_agent:
-                # Function to get documents for the selected agent using MCP client
-                def get_documents(agent_id):
-                    try:
-                        # Get authentication token
-                        auth_token = st.session_state.get("_auth_token_")
-                        if not auth_token:
-                            st.error("Authentication token not found. Please log in again.")
-                            return []
-
-                        # Debug info
-                        st.info(f"Loading documents for agent {agent_id} from MCP service at {st.session_state.mcp_url}")
-                        print(f"Loading documents for agent {agent_id} from MCP service at {st.session_state.mcp_url}")
-
-                        # Create LangGraph client
-                        client = get_langgraph_client(st.session_state.mcp_url, auth_token)
-
-                        # If we have a session ID, use it
-                        if "mcp_session_id" in st.session_state:
-                            client.set_session_id(st.session_state.mcp_session_id)
-                            print(f"Using existing session ID for documents: {st.session_state.mcp_session_id}")
-
-                        # Call the list_documents tool
-                        print("Calling list_documents tool...")
-                        result = client.call_tool_sync("get_user_documents", {"token": auth_token, "agent_id": agent_id})
-                        # Handle both list and dict responses
-                        if result:
-                            if isinstance(result, list):
-                                documents = result
-                            else:
-                                documents = result.get("documents", [])
-                        else:
-                            documents = []
-                        print(f"Received {len(documents) if documents else 0} documents from LangGraph service")
-
-                        # If we got a new session ID from the client, save it
-                        st.session_state.mcp_session_id = client.session_id
-
-                        # Try direct backend call as fallback if no documents returned
-                        if not documents:
-                            print("No documents returned from MCP service, trying direct backend call...")
-                            params = {}
-                            if agent_id and agent_id != "all":
-                                params["agent_id"] = agent_id
-
-                            response = requests.get(
-                                f"{BACKEND_URL}/db/documents",
-                                params=params,
-                                headers={
-                                    "Authorization": f"Bearer {auth_token}"
-                                },
-                                timeout=10
-                            )
-                            if response.status_code == 200:
-                                direct_documents = response.json()
-                                print(f"Received {len(direct_documents)} documents from direct backend call")
-                                return direct_documents
-                            else:
-                                print(f"Direct backend call failed: {response.status_code} - {response.text}")
-                        return documents or []
-                    except Exception as e:
-                        error_msg = f"Error loading documents: {str(e)}"
-                        st.error(error_msg)
-                        print(error_msg)
-                        import traceback
-                        print(traceback.format_exc())
-                        return []
-
-                # Fetch documents for the current agent
-                if "mcp_documents" not in st.session_state or st.button("🔄 Refresh Documents", key="refresh_mcp_documents"):
-                    with st.spinner("Loading documents..."):
-                        st.session_state.mcp_documents = get_documents(st.session_state.mcp_selected_agent)
-
-                # Display document selection dropdown
-                doc_options = []
-                if "mcp_documents" in st.session_state and st.session_state.mcp_documents:
-                    for doc in st.session_state.mcp_documents:
-                        doc_options.append({
-                            "label": doc.get("document_name", "Unnamed Document"),
-                            "value": doc.get("id", "")
-                        })
-
-                # Set default document if not already set
-                if "mcp_selected_document" not in st.session_state:
-                    st.session_state.mcp_selected_document = ""
-
-                # Document selection
-                if doc_options:  # Only show dropdown if there are documents
-                    selected_doc = st.selectbox(
-                        "Select Document",
-                        options=[d["value"] for d in doc_options],
-                        format_func=lambda x: next((d["label"] for d in doc_options if d["value"] == x), x),
-                        index=next((i for i, d in enumerate(doc_options) if d["value"] == st.session_state.mcp_selected_document), 0) if st.session_state.mcp_selected_document in [d["value"] for d in doc_options] else 0,
-                        key="mcp_document_selector"
-                    )
-                else:
-                    # No documents available
-                    selected_doc = ""
-                    st.session_state.mcp_selected_document = ""
-
-                # Update selected document
-                if selected_doc != st.session_state.mcp_selected_document:
-                    st.session_state.mcp_selected_document = selected_doc
-
-                    # Also store the document ID for LangGraph session creation
-                    st.session_state.mcp_selected_document_id = selected_doc
-
-                    # Store the document name for better context
-                    if selected_doc:
-                        doc_name = next((d["label"] for d in doc_options if d["value"] == selected_doc), "Selected Document")
-                        st.session_state.mcp_selected_document_name = doc_name
-                        print(f"Selected document: {doc_name} (ID: {selected_doc})")
-                    else:
-                        st.session_state.mcp_selected_document_name = None
-
-                # Show info about document selection
-                if doc_options and selected_doc:
-                    doc_name = next((d["label"] for d in doc_options if d["value"] == selected_doc), "Selected Document")
-                    st.success(f"The agent will focus on document: {doc_name}")
-                elif not doc_options:
-                    st.warning("No documents available for this agent. Please add documents first.")
-            else:
-                st.warning("Please select an agent first to view associated documents.")
 
         # MCP Tools Section
         if agent_settings_tab == "MCP Tools":
@@ -821,32 +968,48 @@ if st.session_state.get("mcp_activated", False):
             if not mcp_tools:
                 # Try to load tools if not already loaded
                 try:
-                    mcp_tools = get_mcp_tools(st.session_state.mcp_url)
+                    mcp_tools = get_mcp_tools(MCP_URL)
                     st.session_state.mcp_tools = mcp_tools
                 except Exception as e:
                     st.error(f"Could not load MCP tools: {e}")
             if mcp_tools:
+                # Bulk select/deselect buttons
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("Select All Tools", key="select_all_tools_mcpchat", use_container_width=True):
+                        for tool in mcp_tools:
+                            st.session_state.active_tools[tool.get("name", "")] = True
+                with col2:
+                    if st.button("Deselect All Tools", key="deselect_all_tools_mcpchat", use_container_width=True):
+                        for tool in mcp_tools:
+                            st.session_state.active_tools[tool.get("name", "")] = False
+                st.divider()
+                # Display each tool with toggle
                 for tool in mcp_tools:
-                    st.markdown(f"- **{tool.get('name', 'Unnamed Tool')}**: {tool.get('description', 'No description')}")
+                    tool_name = tool.get("name", "")
+                    tool_desc = tool.get("description", "No description")
+                    # Initialize tool state if not present
+                    if tool_name not in st.session_state.active_tools:
+                        st.session_state.active_tools[tool_name] = True
+                    cols = st.columns([4, 1])
+                    with cols[0]:
+                        st.markdown(f"**{tool_name}**")
+                        st.caption(tool_desc)
+                    with cols[1]:
+                        is_active = st.toggle("Active", value=st.session_state.active_tools.get(tool_name, True), key=f"toggle_mcpchat_{tool_name}")
+                        if is_active != st.session_state.active_tools.get(tool_name, True):
+                            # Call toggle_tool if available, else just update state
+                            try:
+                                toggle_tool(tool_name, is_active)
+                            except Exception:
+                                st.session_state.active_tools[tool_name] = is_active
+                    st.divider()
             else:
                 st.info("No MCP tools available or failed to load.")
 
-# User Profile Container
-st.sidebar.markdown("## User Profile")
-user_profile_container = st.sidebar.container(border=True)
-with user_profile_container:
-    if AUTH_ENABLED and st.session_state.get("authenticated", False) and "user" in st.session_state:
-        email = st.session_state['user'].get('email', '')
-        st.markdown(f"**Signed in as:**")
-        st.info(email)
-        if st.button("Sign Out", key="sign_out_btn", use_container_width=True):
-            # Use the proper logout function from auth_forms.py
-            from authentication.auth_forms import logout
-            logout()
-
 
 # Function to get available MCP tools using MCP client
-def get_mcp_tools(url: str) -> List[Dict[str, Any]]:
+def get_mcp_tools(url=MCP_URL):
     try:
         # Get authentication token
         auth_token = st.session_state.get("_auth_token_")
@@ -863,7 +1026,7 @@ def get_mcp_tools(url: str) -> List[Dict[str, Any]]:
         return []
 
 # Function to get available remote agents using MCP client
-def get_remote_agents(url: str) -> List[Dict[str, Any]]:
+def get_remote_agents(url=MCP_URL):
     try:
         # Get authentication token
         auth_token = st.session_state.get("_auth_token_")
@@ -894,7 +1057,7 @@ def get_remote_agents(url: str) -> List[Dict[str, Any]]:
         return []
 
 # Function to get available workflows using MCP client
-def get_workflows(url: str) -> List[Dict[str, Any]]:
+def get_workflows(url=MCP_URL):
     try:
         # Get authentication token
         auth_token = st.session_state.get("_auth_token_")
@@ -923,7 +1086,7 @@ def get_workflows(url: str) -> List[Dict[str, Any]]:
         return []
 
 # Function to create a session with the MCP service using LangGraph client
-def create_langgraph_session(url: str, tools: List[str] = None, model_name: str = "default", system_message: str = None, document_id: str = None) -> bool:
+def create_langgraph_session(url=MCP_URL, tools=None, model_name="default", system_message=None, document_id=None):
     # If MCP is offline, don't even try to create a session
     if st.session_state.mcp_status["status"] == "offline":
         return False
@@ -984,7 +1147,7 @@ def create_langgraph_session(url: str, tools: List[str] = None, model_name: str 
             # Save the updated status to the database
             if "config_loaded" in st.session_state and st.session_state.get("authenticated", False):
                 config = {
-                    "mcp_url": st.session_state.mcp_url,
+                    "mcp_url": MCP_URL,
                     "active_tools": st.session_state.active_tools,
                     "remote_agents_enabled": st.session_state.remote_agents_enabled,
                     "workflow_enabled": st.session_state.workflow_enabled,
@@ -1009,7 +1172,7 @@ def create_langgraph_session(url: str, tools: List[str] = None, model_name: str 
         # Save the updated status to the database
         if "config_loaded" in st.session_state and st.session_state.get("authenticated", False):
             config = {
-                "mcp_url": st.session_state.mcp_url,
+                "mcp_url": MCP_URL,
                 "active_tools": st.session_state.active_tools,
                 "remote_agents_enabled": st.session_state.remote_agents_enabled,
                 "workflow_enabled": st.session_state.workflow_enabled,
@@ -1035,10 +1198,9 @@ def send_message(
     Send a chat message using the unified chat_with_agent_rag helper.
     """
     auth_token = st.session_state.get("_auth_token_")
-    mcp_url = st.session_state.get("mcp_url", "http://localhost:8001")
     client = st.session_state.get("mcp_client")
     if not client:
-        client = get_langgraph_client(mcp_url, auth_token)
+        client = get_langgraph_client(MCP_URL, auth_token)
         st.session_state["mcp_client"] = client
 
     # Always use the correct chat session id
@@ -1075,7 +1237,7 @@ if "config_loaded" not in st.session_state:
     # Try to load config from backend
     config = load_mcp_config()
     if config:
-        st.session_state.mcp_url = config.get("mcp_url", "http://localhost:8001")
+        # Do not load MCP URL from backend config; always use environment
         st.session_state.active_tools = config.get("active_tools", {})
         st.session_state.remote_agents_enabled = config.get("remote_agents_enabled", False)
         st.session_state.workflow_enabled = config.get("workflow_enabled", False)
@@ -1096,19 +1258,33 @@ if isinstance(st.session_state.mcp_status, str) or st.session_state.mcp_status.g
         print(f"Using MCP status from database: {st.session_state.mcp_status['status']}")
     else:
         # Only check the actual connection if we don't have a valid status from the database
-        st.session_state.mcp_status = check_mcp_status(st.session_state.mcp_url)
+        st.session_state.mcp_status = check_mcp_status(MCP_URL)
         print(f"Checked actual MCP connection, status: {st.session_state.mcp_status['status']}")
 
 # If MCP is activated, always check the actual connection status
+import time
+
+CACHE_SECONDS = 60
+now = time.time()
+last_checked = st.session_state.get("mcp_status_last_checked", 0)
+
 if st.session_state.get("mcp_activated", False):
-    # Check the actual MCP status
-    st.session_state.mcp_status = check_mcp_status(st.session_state.mcp_url)
-    print(f"MCP is activated, checked actual connection, status: {st.session_state.mcp_status['status']}")
+    # Only check MCP status if cache expired or unknown
+    if (
+        not st.session_state.get("mcp_status")
+        or st.session_state.mcp_status.get("status") == "unknown"
+        or now - last_checked > CACHE_SECONDS
+    ):
+        st.session_state.mcp_status = check_mcp_status(MCP_URL)
+        st.session_state.mcp_status_last_checked = now
+        print(f"MCP status checked at {now}, status: {st.session_state.mcp_status['status']}")
+    else:
+        print(f"MCP status cache hit, last checked at {last_checked}, status: {st.session_state.mcp_status['status']}")
 
     # Save the status to the backend
     if "config_loaded" in st.session_state and st.session_state.get("authenticated", False):
         config = {
-            "mcp_url": st.session_state.mcp_url,
+            "mcp_url": MCP_URL,
             "active_tools": st.session_state.active_tools,
             "remote_agents_enabled": st.session_state.remote_agents_enabled,
             "workflow_enabled": st.session_state.workflow_enabled,
@@ -1118,15 +1294,15 @@ if st.session_state.get("mcp_activated", False):
 
     # Load tools and other resources if online
     if st.session_state.mcp_status["status"] == "online":
-        st.session_state.mcp_tools = get_mcp_tools(st.session_state.mcp_url)
+        st.session_state.mcp_tools = get_mcp_tools(MCP_URL)
 
         # Get remote agents if enabled
         if st.session_state.remote_agents_enabled:
-            st.session_state.remote_agents = get_remote_agents(st.session_state.mcp_url)
+            st.session_state.remote_agents = get_remote_agents(MCP_URL)
 
         # Get workflows if enabled
         if st.session_state.workflow_enabled:
-            st.session_state.workflows = get_workflows(st.session_state.mcp_url)
+            st.session_state.workflows = get_workflows(MCP_URL)
 
 # Create a session if we don't have one and MCP is online and activated
 # But only try to connect if the user has explicitly activated MCP
@@ -1139,7 +1315,7 @@ if st.session_state.mcp_activated and st.session_state.mcp_status["status"] == "
 
     if auth_token:
         # Create MCP client
-        client = get_langgraph_client(st.session_state.mcp_url, auth_token)
+        client = get_langgraph_client(MCP_URL, auth_token)
 
         # Create a new session
         user_id = st.session_state['user']['id'] if 'user' in st.session_state and 'id' in st.session_state['user'] else None
@@ -1154,252 +1330,10 @@ if st.session_state.mcp_activated and st.session_state.mcp_status["status"] == "
             else:
                 print("Failed to create MCP session")
 
-# Chat Sessions Container
-with st.sidebar:
-    st.subheader("Chat Sessions")
 
-    # Only show the New Chat button and sessions if an agent is selected
-    if st.session_state.get("mcp_selected_agent"):
-        # Create a New Chat button at the top level in the sidebar
-        if st.button("New Chat", key="new_chat_btn", use_container_width=True):
-            agent_id = st.session_state.get("mcp_selected_agent")
-            document_id = st.session_state.get("mcp_selected_document")
-            title = f"Chat {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-            auth_token = st.session_state.get("_auth_token_")
-            client = get_langgraph_client(st.session_state.mcp_url, auth_token)
-            # No need to import create_chat_session, we'll call the tool directly
-
-            # Create the session data dictionary
-            session_data = {
-                "agent_id": agent_id,
-                "title": title,
-                "metadata": {},
-                "chat_parameters": {}
-            }
-
-            # Add document_id if selected
-            if document_id:
-                session_data["document_id"] = document_id
-
-            # Call the create_chat_session tool directly
-            # Make sure to set the session ID first to avoid the "No session ID provided" error
-            if "mcp_session_id" in st.session_state and st.session_state.mcp_session_id:
-                client.set_session_id(st.session_state.mcp_session_id)
-
-            # Debug output
-            print(f"DEBUG: Creating chat session with data: {session_data}")
-
-            result = client.call_tool_sync("create_chat_session", {
-                "token": auth_token,
-                "session_data": session_data
-            })
-
-            # Debug output
-            print(f"DEBUG: create_chat_session result: {result}")
-
-            # Parse the result
-            if result and isinstance(result, str):
-                try:
-                    print(f"DEBUG: Parsing string result: {result}")
-                    result_json = json.loads(result)
-                    session_id = result_json.get("session_id") or result_json.get("id")
-                    print(f"DEBUG: Parsed session_id from JSON: {session_id}")
-                except json.JSONDecodeError as e:
-                    print(f"DEBUG: JSON decode error: {str(e)}")
-                    session_id = None
-            elif isinstance(result, dict):
-                print(f"DEBUG: Result is a dict: {result}")
-                session_id = result.get("session_id") or result.get("id")
-                print(f"DEBUG: Got session_id from dict: {session_id}")
-            else:
-                print(f"DEBUG: Result is neither string nor dict: {result}")
-                session_id = None
-
-            if session_id:
-                print(f"DEBUG: Setting session_id in session state: {session_id}")
-                st.session_state.messages = []
-                st.session_state.mcp_session_id = session_id
-                st.session_state.mcp_chat_session_id = session_id
-                st.toast("Started new chat session", icon="✅")
-                st.rerun()
-            else:
-                st.error("Failed to create new chat session.")
-                if result:
-                    st.error(f"Error details: {result}")
-
-        # Function to load chat sessions for the current agent and document using MCP client
-        def load_mcp_chat_sessions():
-            try:
-                # Get authentication token
-                auth_token = st.session_state.get("_auth_token_")
-
-                # Create LangGraph client
-                client = get_langgraph_client(st.session_state.mcp_url, auth_token)
-
-                # If we have a session ID, use it
-                if "mcp_session_id" in st.session_state:
-                    client.set_session_id(st.session_state.mcp_session_id)
-
-                # Get agent ID and document ID
-                agent_id = st.session_state.get("mcp_selected_agent", "")
-                document_id = st.session_state.get("mcp_selected_document", "")
-
-                # Call the list_chat_sessions tool
-                result = client.call_tool_sync("get_user_chat_sessions", {"token": auth_token, "agent_id": agent_id})
-                # Handle both list and dict responses
-                if result:
-                    if isinstance(result, list):
-                        sessions = result
-                    else:
-                        sessions = result.get("sessions", [])
-                else:
-                    sessions = []
-
-                # If we got a new session ID from the client, save it
-                st.session_state.mcp_session_id = client.session_id
-
-                # If a document is selected, filter the sessions in the frontend
-                if document_id and sessions:
-                    sessions = [session for session in sessions if session.get('document_id') == document_id]
-
-                return sessions or []
-            except Exception as e:
-                st.error(f"Error loading chat sessions: {str(e)}")
-                return []
-
-        # Function to load a specific chat session using MCP client
-        def load_mcp_chat_session(session_id):
-            try:
-                # Get authentication token
-                auth_token = st.session_state.get("_auth_token_")
-
-                # Create LangGraph client
-                client = get_langgraph_client(st.session_state.mcp_url, auth_token)
-
-                # If we have a session ID, use it
-                if "mcp_session_id" in st.session_state:
-                    client.set_session_id(st.session_state.mcp_session_id)
-
-                # Call the get_chat_session tool
-                result = client.call_tool_sync("get_chat_session", {"session_id": session_id})
-                # Handle both dict and list responses (though this should always be a dict)
-                session_data = result if result else None
-
-                # If we got a new session ID from the client, save it
-                st.session_state.mcp_session_id = client.session_id
-
-                # Update messages in session state
-                if session_data:
-                    st.session_state.messages = session_data.get("messages", [])
-
-                return session_data
-            except Exception as e:
-                st.error(f"Error loading chat session: {str(e)}")
-                return None
-
-        # Function to delete a chat session using MCP client
-        def delete_mcp_chat_session(session_id):
-            try:
-                # Get authentication token
-                auth_token = st.session_state.get("_auth_token_")
-
-                # Create LangGraph client
-                client = get_langgraph_client(st.session_state.mcp_url, auth_token)
-
-                # If we have a session ID, use it
-                if "mcp_session_id" in st.session_state:
-                    client.set_session_id(st.session_state.mcp_session_id)
-
-                # Call the delete_chat_session tool
-                result = client.call_tool_sync("delete_chat_session", {"session_id": session_id})
-                success = result.get("success", False) if result else False
-
-                # If we got a new session ID from the client, save it
-                st.session_state.mcp_session_id = client.session_id
-
-                return success
-            except Exception as e:
-                st.error(f"Error deleting chat session: {str(e)}")
-                return False
-
-        # Display session reload button
-        if st.button("🔄 Reload Sessions", key="reload_sessions_btn", use_container_width=True):
-            st.success("Reloading chat sessions...")
-            st.session_state.sessions_reload_requested = True
-
-        # Check if sessions reload was requested
-        if st.session_state.get("sessions_reload_requested", False):
-            # Clear the flag first
-            st.session_state.sessions_reload_requested = False
-            # Rerun for safer page refresh
-            st.rerun()
-
-        # Create a scrollable container for all chat sessions
-        sessions_container = st.container(height=300, border=True)
-
-        # Load and display existing chat sessions
-        with sessions_container:
-            sessions = load_mcp_chat_sessions()
-
-            if not sessions:
-                if st.session_state.get('mcp_selected_document'):
-                    # Get document name for better user feedback
-                    doc_name = ""
-                    if "mcp_documents" in st.session_state:
-                        for doc in st.session_state.mcp_documents:
-                            if doc.get("id") == st.session_state.get('mcp_selected_document'):
-                                doc_name = doc.get("document_name", "selected document")
-                                break
-
-                    if doc_name:
-                        st.info(f"No chat sessions found for agent with document: {doc_name}")
-                        st.caption("Sessions are specific to both the selected agent and document.")
-                    else:
-                        st.info("No chat sessions found for this agent with the selected document.")
-                        st.caption("Sessions are specific to both the selected agent and document.")
-                else:
-                    st.info("No chat sessions found for this agent.")
-
-            # Display all sessions inside the scrollable container
-            for session in sessions:
-                session_title = session.get("title", "Untitled Chat")
-                session_id = session.get("id")
-                doc_name = session.get("document_name", "")
-                created_at = datetime.fromisoformat(session.get("created_at", datetime.now().isoformat()).replace("Z", "+00:00"))
-                formatted_date = created_at.strftime("%Y-%m-%d %H:%M")
-
-                # Create a container for each session
-                session_container = st.container(border=True)
-                with session_container:
-                    # Session title and metadata
-                    st.write(f"**{session_title}**")
-                    st.caption(f"Created: {formatted_date}")
-                    if doc_name:
-                        st.caption(f"Document: {doc_name}")
-
-                    # Actions for this session
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        if st.button("Load", key=f"load_{session_id}"):
-                            load_mcp_chat_session(session_id)
-                            st.session_state.mcp_chat_session_id = session_id
-                            st.rerun()
-                    with col2:
-                        if st.button("Delete", key=f"delete_{session_id}"):
-                            if delete_mcp_chat_session(session_id):
-                                if st.session_state.get("mcp_chat_session_id") == session_id:
-                                    st.session_state.messages = []
-                                    st.session_state.mcp_chat_session_id = None
-                                st.rerun()
-                            else:
-                                st.error(f"Failed to delete session")
-    else:
-        # If no agent is selected, show a message
-        st.info("Select an agent in the settings above to see your chat sessions.")
 
 
 # Main chat interface
-st.markdown("## 💬 Chat with MCP")
 st.markdown("Ask questions about your documents or use the available tools to help you with your tasks.")
 
 # Add a horizontal rule for visual separation
@@ -1453,20 +1387,55 @@ with chat_container:
                             for i, doc in enumerate(source_documents):
                                 # Extract metadata, handling possible locations
                                 metadata = doc.get("metadata", {})
-                                doc_name = metadata.get("document_name") or doc.get("document_name", "Unknown Document")
-                                chunk_index = metadata.get("chunk_index") or doc.get("chunk_index", 0)
-                                start_time = metadata.get("start_time") or doc.get("start_time")
-                                end_time = metadata.get("end_time") or doc.get("end_time")
-                                score = metadata.get("similarity") or doc.get("similarity", 0)
 
-                                # Fallback to nested metadata
-                                if (not doc_name or doc_name == "Unknown Document") and "metadata" in metadata:
-                                    nested = metadata["metadata"]
-                                    doc_name = nested.get("document_name", doc_name)
-                                    chunk_index = nested.get("chunk_index", chunk_index)
-                                    start_time = nested.get("start_time", start_time)
-                                    end_time = nested.get("end_time", end_time)
-                                    score = nested.get("similarity", score)
+                                # Check if we have a nested metadata structure (common in Qdrant responses)
+                                nested_metadata = metadata.get("metadata", {})
+
+                                # First try to get values from the nested metadata (most complete)
+                                if nested_metadata:
+                                    doc_name = nested_metadata.get("document_name", "Unknown Document")
+                                    chunk_index = nested_metadata.get("chunk_index", 0)
+                                    start_time = nested_metadata.get("start_time")
+                                    end_time = nested_metadata.get("end_time")
+                                    score = metadata.get("similarity", 0)  # Score is usually in the parent metadata
+                                    segment = nested_metadata.get("segment", "Unknown")
+                                else:
+                                    # Fallback to the parent metadata
+                                    doc_name = metadata.get("document_name") or doc.get("document_name", "Unknown Document")
+                                    chunk_index = metadata.get("chunk_index") or doc.get("chunk_index", 0)
+                                    start_time = metadata.get("start_time") or doc.get("start_time")
+                                    end_time = metadata.get("end_time") or doc.get("end_time")
+                                    score = metadata.get("similarity") or doc.get("similarity", 0)
+                                    segment = metadata.get("segment") or doc.get("segment", "Unknown")
+
+                                # Print debug info
+                                print(f"DEBUG: Document metadata extraction:")
+                                print(f"  - doc_name: {doc_name}")
+                                print(f"  - chunk_index: {chunk_index}")
+                                print(f"  - segment: {segment}")
+                                print(f"  - start_time: {start_time}")
+                                print(f"  - end_time: {end_time}")
+                                print(f"  - score: {score}")
+
+                                # Try to extract segment from content if not found in metadata
+                                if segment == "Unknown" and "content" in doc:
+                                    content = doc.get("content", "")
+                                    if "Segment" in content:
+                                        import re
+                                        segment_match = re.search(r"Segment\s+(\d+)", content)
+                                        if segment_match:
+                                            segment = segment_match.group(1)
+                                            print(f"DEBUG: Extracted segment {segment} from content")
+
+                                # If segment is still unknown, use chunk_index + 1 as segment
+                                if segment == "Unknown" and chunk_index is not None:
+                                    segment = str(int(chunk_index) + 1) if isinstance(chunk_index, (int, float)) or (isinstance(chunk_index, str) and chunk_index.isdigit()) else "1"
+                                    print(f"DEBUG: Using chunk_index {chunk_index} as segment {segment}")
+
+                                # If still unknown, default to 1
+                                if segment == "Unknown":
+                                    segment = "1"
+                                    print(f"DEBUG: Using default segment 1")
 
                                 # Format values
                                 start_time_disp = f"{float(start_time):.2f}s" if start_time is not None else "N/A"
@@ -1475,16 +1444,18 @@ with chat_container:
 
                                 # Header
                                 st.markdown(f"**Source {i+1}: {doc_name}**")
-                                # Always display chunk/section as 1-based (never 0-based)
+                                # Always display chunk/segment as 1-based (never 0-based)
                                 chunk_display = int(chunk_index) + 1 if isinstance(chunk_index, int) or (isinstance(chunk_index, str) and chunk_index.isdigit()) else chunk_index
-                                col1, col2, col3, col4 = st.columns(4)
+                                col1, col2, col3, col4, col5 = st.columns(5)
                                 with col1:
-                                    st.caption(f"Section: {chunk_display}")
+                                    st.caption(f"Segment: {segment}")
                                 with col2:
-                                    st.caption(f"Start Time: {start_time_disp}")
+                                    st.caption(f"Chunk: {chunk_display}")
                                 with col3:
-                                    st.caption(f"End Time: {end_time_disp}")
+                                    st.caption(f"Start Time: {start_time_disp}")
                                 with col4:
+                                    st.caption(f"End Time: {end_time_disp}")
+                                with col5:
                                     st.caption(f"Score: {score_disp}")
                                 st.code(doc.get("content", "No content available"))
                                 if i < len(source_documents) - 1:
@@ -1531,19 +1502,44 @@ if chat_submission:
         if st.session_state.get("mcp_selected_agent") and "chat_with_agent" not in active_tools:
             active_tools.append("chat_with_agent")
 
-        # Show audio files in the chat UI
+        # If audio files are uploaded, navigate to flameaudio.py and load the user's agent
         if uploaded_files:
-            for file in uploaded_files:
-                st.chat_message("user", avatar="👤").audio(file, format="audio/" + file.type.split("/")[-1])
+            # Set the agent in session state so flameaudio.py can load it, and preload agent details
+            if st.session_state.get("mcp_selected_agent"):
+                agent_id = st.session_state["mcp_selected_agent"]
+                st.session_state.current_agent_id = agent_id
+
+                # Fetch agent details directly to avoid Streamlit import collision
+                try:
+                    import os
+                    import requests
+                    BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+                    auth_token = st.session_state.get('_auth_token_', '')
+                    response = requests.get(
+                        f"{BACKEND_URL}/db/agents/{agent_id}",
+                        headers={"Authorization": f"Bearer {auth_token}"},
+                        timeout=10
+                    )
+                    if response.status_code == 200:
+                        agent_data = response.json()
+                        st.session_state.agent_name = agent_data.get("name", "")
+                        st.session_state.system_message = agent_data.get("system_message", "")
+                except Exception as e:
+                    st.warning(f"Could not load agent details: {e}")
+            # Optionally store the uploaded files in session state for flameaudio.py to use
+            st.session_state.uploaded_audio_files = uploaded_files
+            # Navigate to flameaudio.py
+            st.switch_page("pages/flameaudio.py")
+            st.stop()
         # The rest of the chat logic (sending message to backend, etc.) continues below.
 
         # Show debugging information
-        with st.expander("Debug Information", expanded=True):
-            st.write("MCP URL:", st.session_state.mcp_url)
-            st.write("Session ID:", st.session_state.get("mcp_session_id", "Not set"))
-            st.write("Active Tools:", active_tools)
-            st.write("Auth Headers:", get_auth_headers())
-            st.write("Current Messages:", st.session_state.get("messages", []))
+        # with st.expander("Debug Information", expanded=True):
+        #     st.write("MCP URL:", MCP_URL)
+        #     st.write("Session ID:", st.session_state.get("mcp_session_id", "Not set"))
+        #     st.write("Active Tools:", active_tools)
+        #     st.write("Auth Headers:", get_auth_headers())
+        #     st.write("Current Messages:", st.session_state.get("messages", []))
 
         # Add user message to session state and UI
         if user_message not in [msg.get("content", "") for msg in st.session_state.messages if msg.get("role") == "user"]:
@@ -1623,9 +1619,7 @@ if chat_submission:
             # Clear the typing indicator
             typing_placeholder.empty()
 
-            # Show result for debugging
-            with st.expander("Response Debug", expanded=True):
-                st.json(result)
+            # Debug expander removed as per user request
 
             if not isinstance(result, dict):
                 st.error("Internal error: Backend did not return a valid response object.")
@@ -1712,3 +1706,163 @@ if chat_submission:
 
         # Force UI refresh
         st.rerun()
+
+# MCP Settings Container: Always visible for authenticated users
+if AUTH_ENABLED and st.session_state.get("authenticated", False):
+    st.sidebar.markdown("## Chat Settings")
+    mcp_settings_container = st.sidebar.container(border=True)
+    with mcp_settings_container:
+        mcp_activated = st.toggle(
+            "Activate MCP",
+            value=st.session_state.get("mcp_activated", False),
+            help="Toggle to activate or deactivate MCP features."
+        )
+
+        # Update session state if the toggle value changed
+        if mcp_activated != st.session_state.get("mcp_activated", False):
+            st.session_state.mcp_activated = mcp_activated
+
+            # If MCP is activated, check the status and update it
+            if mcp_activated:
+                # Check the actual MCP status
+                new_status = check_mcp_status(MCP_URL)
+                st.session_state.mcp_status = new_status
+
+                # If MCP is online, try to create a session
+                if new_status.get("status") == "online":
+                    print("MCP is online, creating a session...")
+                    # Get authentication token
+                    auth_token = st.session_state.get("_auth_token_")
+                    if auth_token:
+                        # Create LangGraph client
+                        client = get_langgraph_client(MCP_URL, auth_token)
+
+                        # Create a new session
+                        # Get user ID from session state
+                        user_id = st.session_state['user']['id'] if 'user' in st.session_state and 'id' in st.session_state['user'] else None
+                        if not user_id:
+                            print("User ID not found in session state. Cannot create MCP session.")
+                        else:
+                            session_created = create_session(client, user_id)
+                            print(f"Session creation result: {session_created}")
+                            if session_created:
+                                # Save the session ID
+                                st.session_state.mcp_session_id = client.session_id
+                                print(f"Created new session: {st.session_state.mcp_session_id}")
+
+                                # Store the client in session state
+                                st.session_state.mcp_client = client
+                            else:
+                                print("Failed to create MCP session")
+                    else:
+                        print("No authentication token found, cannot create MCP session")
+
+                # Save the status to the backend
+                if "config_loaded" in st.session_state and st.session_state.get("authenticated", False):
+                    config = {
+                        "mcp_url": MCP_URL,
+                        "active_tools": st.session_state.active_tools,
+                        "remote_agents_enabled": st.session_state.remote_agents_enabled,
+                        "workflow_enabled": st.session_state.workflow_enabled,
+                        "mcp_status": new_status
+                    }
+                    save_mcp_config(config)
+
+                # Force a rerun to update the UI
+                st.rerun()
+        else:
+            st.session_state.mcp_activated = mcp_activated
+        # MCP Service URL input
+        st.text_input(
+            "MCP Service URL",
+            value=MCP_URL,
+            key="mcp_url_input",
+            disabled=True
+        )
+        # Remove update button and config save logic for MCP URL
+
+        # MCP status display - only show if activated
+        if st.session_state.get("mcp_activated", False):
+            with st.spinner("Checking MCP status..."):
+                # Use cache for MCP status unless user forces refresh
+                now = time.time()
+                last_checked = st.session_state.get("mcp_status_last_checked", 0)
+                if (
+                    not st.session_state.get("mcp_status")
+                    or st.session_state.mcp_status.get("status") == "unknown"
+                    or now - last_checked > CACHE_SECONDS
+                ):
+                    current_status = check_mcp_status(MCP_URL)
+                    st.session_state.mcp_status = current_status
+                    st.session_state.mcp_status_last_checked = now
+                    print(f"MCP status checked at {now}, status: {current_status['status']}")
+                else:
+                    current_status = st.session_state.mcp_status
+                    print(f"MCP status cache hit, last checked at {last_checked}, status: {current_status['status']}")
+
+                # Save the status to the backend
+                if "config_loaded" in st.session_state and st.session_state.get("authenticated", False):
+                    config = {
+                        "mcp_url": MCP_URL,
+                        "active_tools": st.session_state.active_tools,
+                        "remote_agents_enabled": st.session_state.remote_agents_enabled,
+                        "workflow_enabled": st.session_state.workflow_enabled,
+                        "mcp_status": current_status
+                    }
+                    save_mcp_config(config)
+
+                # Display the current status
+                if current_status.get("status") == "online":
+                    st.success("MCP Service is online")
+                else:
+                    st.warning(f"MCP Service is offline or has errors: {current_status.get('details', {}).get('message', 'Unknown error')}")
+
+                # Add a button to check the status manually
+                if st.button("Check Status Again", key="check_mcp_status"):
+                    # Force a fresh MCP status check
+                    new_status = check_mcp_status(MCP_URL)
+                    st.session_state.mcp_status = new_status
+                    st.session_state.mcp_status_last_checked = time.time()
+
+                    # Save the status to the backend
+                    if "config_loaded" in st.session_state and st.session_state.get("authenticated", False):
+                        config = {
+                            "mcp_url": MCP_URL,
+                            "active_tools": st.session_state.active_tools,
+                            "remote_agents_enabled": st.session_state.remote_agents_enabled,
+                            "workflow_enabled": st.session_state.workflow_enabled,
+                            "mcp_status": new_status
+                        }
+                        save_mcp_config(config)
+
+                    # Force a rerun to update the UI
+                    st.rerun()
+        else:
+            st.info("MCP is currently deactivated. Activate MCP to check status.")
+
+#connect with us
+with st.sidebar:
+    with st.container(border=True):
+        st.subheader("Connect with us")
+        sac.buttons([
+            sac.ButtonsItem(label='About FlameheadLabs', icon='info-circle', href='http://flameheadlabs.tech/'),
+            sac.ButtonsItem(label='Give 5 stars on Github', icon='github', href='https://github.com/Flamehead-Labs-Ug/flame-audio'),
+            sac.ButtonsItem(label='Follow on X', icon='twitter', href='https://x.com/flameheadlabsug'),
+            sac.ButtonsItem(label='Follow on Linkedin', icon='linkedin', href='https://www.linkedin.com/in/flamehead-labs-919910285'),
+            sac.ButtonsItem(label='Email', icon='mail', href='mailto:Flameheadlabs256@gmail.com'),
+        ],
+        label='',
+        align='center')
+
+# User Profile Container
+st.sidebar.markdown("## User Profile")
+user_profile_container = st.sidebar.container(border=True)
+with user_profile_container:
+    if AUTH_ENABLED and st.session_state.get("authenticated", False) and "user" in st.session_state:
+        email = st.session_state['user'].get('email', '')
+        st.markdown(f"**Signed in as:**")
+        st.info(email)
+        if st.button("Sign Out", key="sign_out_btn", use_container_width=True):
+            # Use the proper logout function from auth_forms.py
+            from authentication.auth_forms import logout
+            logout()

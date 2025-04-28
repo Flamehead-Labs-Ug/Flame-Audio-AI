@@ -5,7 +5,8 @@
 CREATE TABLE IF NOT EXISTS user_data.mcp_configurations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users ON DELETE CASCADE,
-  mcp_url TEXT NOT NULL DEFAULT 'http://localhost:8001',
+  -- The default should be set via the MCP_URL environment variable in application config
+mcp_url TEXT NOT NULL DEFAULT 'http://localhost:8001',
   active_tools JSONB DEFAULT '{}'::jsonb,
   remote_agents_enabled BOOLEAN DEFAULT false,
   workflow_enabled BOOLEAN DEFAULT false,

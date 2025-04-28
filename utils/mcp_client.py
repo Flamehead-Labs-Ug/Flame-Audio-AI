@@ -24,7 +24,10 @@ class McpClient:
     This class provides methods for calling Flame MCP tools and managing sessions.
     """
 
-    def __init__(self, mcp_url: str = "http://localhost:8001", auth_token: Optional[str] = None):
+    import os
+def __init__(self, mcp_url: str = None, auth_token: Optional[str] = None):
+    if mcp_url is None:
+        mcp_url = os.environ.get("MCP_URL", "http://localhost:8001")
         """
         Initialize the Flame MCP client.
 

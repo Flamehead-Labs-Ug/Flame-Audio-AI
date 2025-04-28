@@ -43,9 +43,9 @@ with st.sidebar:
 	    sac.MenuItem('Playground', icon='mic-fill', href='/flameaudio'),
         sac.MenuItem('Agents', icon='person-fill', href='/agents'),
         sac.MenuItem('Documents', icon='file-text-fill'),
-        sac.MenuItem('Chat', icon='chat-fill', href='/chat'),
+        #sac.MenuItem('Chat', icon='chat-fill', href='/chat'),
         sac.MenuItem('MCP', icon='gear-fill', href='/flame_mcp'),
-        sac.MenuItem('MCP Chat', icon='chat-dots-fill', href='/mcp_chat'),
+        sac.MenuItem('Flame Audio Chat', icon='chat-dots-fill', href='/mcp_chat'),
     ], open_all=True)
 # Show authentication forms if not authenticated
 if AUTH_ENABLED and not st.session_state.get("authenticated", False):
@@ -108,7 +108,7 @@ with st.sidebar:
                 st.session_state.selected_agent = selected_agent
                 # Force refresh of documents
                 st.session_state.loading_documents = True
-                st.experimental_rerun()
+                st.rerun()
         else:
             st.info("Please sign in to access agent settings")
 
@@ -153,7 +153,7 @@ if not AUTH_ENABLED or st.session_state.get("authenticated", False):
         with col2:
             if st.button("Refresh", key="refresh_documents", use_container_width=True):
                 st.session_state.loading_documents = True
-                st.experimental_rerun()
+                st.rerun()
 
         # Load documents if needed
         if "loading_documents" not in st.session_state:
@@ -279,7 +279,7 @@ if not AUTH_ENABLED or st.session_state.get("authenticated", False):
                             st.success(f"Successfully deleted {success_count} document(s)")
                             # Refresh the documents list
                             st.session_state.loading_documents = True
-                            st.experimental_rerun()
+                            st.rerun()
                 else:
                     st.warning("No documents selected for deletion")
         else:

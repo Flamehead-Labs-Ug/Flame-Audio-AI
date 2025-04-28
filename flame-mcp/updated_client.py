@@ -49,7 +49,7 @@ if __name__ == "__main__":
     if len(sys.argv) < 3:
         print(
             "Usage: uv run -- client.py <server_url> <wikipedia_article_url>\n"
-            "Example: uv run -- client.py http://localhost:8001/sse https://en.wikipedia.org/wiki/India"
+            "Example: uv run -- client.py $MCP_URL/sse https://en.wikipedia.org/wiki/India"
         )
         sys.exit(1)
     
