@@ -1866,3 +1866,6 @@ with user_profile_container:
             # Use the proper logout function from auth_forms.py
             from authentication.auth_forms import logout
             logout()
+
+
+

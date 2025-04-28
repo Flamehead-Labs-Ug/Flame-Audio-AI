@@ -286,3 +286,22 @@ if not AUTH_ENABLED or st.session_state.get("authenticated", False):
             st.info("No documents found. Start transcribing audio to create your first document!")
 else:
     st.warning("Please sign in to view your documents.")
+
+# Define footer HTML
+footer = """
+<footer style="margin-top: 5rem; padding: 2.5rem 0; border-top: 1px solid rgba(0,0,0,0.05); width: 100%;">
+    <div style="max-width: 1200px; margin: 0 auto; padding: 0 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center;">
+            <div style="font-size: 0.9rem; color: #6B7280; margin-right: 1rem;">
+                2025 FlameheadLabs
+            </div>
+        </div>
+        <div style="font-size: 0.85rem; color: #9CA3AF;">
+            <a href="privacy.html" target="_blank" style="color: #6B7280; margin-right: 1rem; text-decoration: none;">Privacy Policy</a>
+            <a href="terms.html" target="_blank" style="color: #6B7280; text-decoration: none;">Terms of Service</a>
+        </div>
+    </div>
+</footer>
+"""
+
+st.markdown(footer, unsafe_allow_html=True)
