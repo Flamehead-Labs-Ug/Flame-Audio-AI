@@ -23,7 +23,7 @@ Flame Audio AI is a powerful speech transcription, translation, and AI chat appl
 - **Customizable Chunking**: Configure chunk size and overlap to optimize document retrieval
 - **Document Organization**: Associate documents with specific AI agents
 
-### MCP (Multi-Channel Processing) Service
+### MCP Service
 - **Dedicated Service for Audio and Chat Processing**: The MCP backend provides scalable, isolated processing for audio, chat, and agent tools.
 - **Status Monitoring and Tool Management**: Configure and monitor MCP status, manage tools, and enable advanced orchestration features.
 
